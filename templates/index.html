@@ -23,9 +23,6 @@
                     <button class="cabinet-btn" data-cabinet="trecktrack">TreckTrack</button>
                     <button class="cabinet-btn" data-cabinet="sevenhundredshin">700shin</button>
                 </div>
-                <div id="connectionStatus" class="connection-status hidden">
-                    ⚠️ Нет соединения с сервером
-                </div>
             </div>
 
             <div class="content">
@@ -121,8 +118,8 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.2.7</strong></span>
-        <span class="slogan">Меньше рутины. Больше роста.</span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.2.8</strong></span>
+        <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
     <script>
@@ -142,11 +139,27 @@
             setTimeout(() => toast.className = 'toast', 3000);
         }
 
+        // Функция для показа/скрытия индикатора соединения
         function setConnectionStatus(connected) {
-            const statusDiv = document.getElementById('connectionStatus');
-            if (statusDiv) {
-                if (connected) statusDiv.classList.add('hidden');
-                else statusDiv.classList.remove('hidden');
+            let statusDiv = document.getElementById('connectionStatus');
+            const headerTop = document.querySelector('.header-top');
+            
+            if (!headerTop) return;
+            
+            if (!connected) {
+                // Если нет соединения и индикатора нет - создаём
+                if (!statusDiv) {
+                    statusDiv = document.createElement('div');
+                    statusDiv.id = 'connectionStatus';
+                    statusDiv.className = 'connection-status';
+                    statusDiv.innerHTML = '⚠️ Нет соединения с сервером';
+                    headerTop.appendChild(statusDiv);
+                }
+            } else {
+                // Если соединение есть и индикатор существует - удаляем
+                if (statusDiv) {
+                    statusDiv.remove();
+                }
             }
         }
 
@@ -715,17 +728,49 @@
             }
         }
 
+        let connectionCheckTimeout = null;
+        let isResizing = false;
+
+        window.addEventListener('resize', function() {
+            isResizing = true;
+            if (connectionCheckTimeout) clearTimeout(connectionCheckTimeout);
+            connectionCheckTimeout = setTimeout(function() {
+                isResizing = false;
+                checkConnection();
+            }, 300);
+        });
+
         async function checkConnection() {
             try {
-                await fetch('/api/codes/available', { method: 'HEAD' });
-                setConnectionStatus(true);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                
+                await fetch('/api/codes/available', { 
+                    method: 'HEAD',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                setConnectionStatus(true);  // соединение есть - удаляем индикатор
             } catch {
-                setConnectionStatus(false);
+                setConnectionStatus(false); // нет соединения - показываем индикатор
+            }
+        }
+
+        function setConnectionStatus(connected) {
+            const statusDiv = document.getElementById('connectionStatus');
+            if (!statusDiv || isResizing) return;
+            
+            if (connected) {
+                statusDiv.classList.add('hidden');
+            } else {
+                statusDiv.classList.remove('hidden');
             }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             checkConnection();
+            // Проверка соединения каждые 30 секунд
+            setInterval(checkConnection, 30000);
             
             if (authToken) {
                 isAuth = true;

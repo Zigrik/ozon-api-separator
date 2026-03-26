@@ -793,6 +793,7 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Формируем запрос на установку маркировки
+	// Формируем запрос на установку маркировки
 	type Mark struct {
 		Mark     string `json:"mark"`
 		MarkType string `json:"mark_type"`
@@ -831,7 +832,7 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 			Marks: []Mark{
 				{
 					Mark:     codes[i],
-					MarkType: "CIS",
+					MarkType: "mandatory_mark", // ← исправлено
 				},
 			},
 		}

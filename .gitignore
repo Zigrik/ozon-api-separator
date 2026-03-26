@@ -27,8 +27,11 @@ go.work.sum
 # env file
 .env
 
-# txt file (GTINs)
-.txt
+# txt file
+GTINs.txt
+
+# key files
+*.key
 
 # Editor/IDE
 # .idea/

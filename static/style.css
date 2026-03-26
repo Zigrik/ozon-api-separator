@@ -836,34 +836,8 @@ body:not([data-cabinet]) {
         gap: 15px;
     }
 
-    /* Индикатор статуса соединения */
-    .connection-status {
-        padding: 6px 12px;
-        background-color: #dc3545;
-        color: white;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 500;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        animation: pulse 1.5s infinite;
-    }
-
     .connection-status.hidden {
-        display: none;
-    }
-
-    @keyframes pulse {
-        0% {
-            opacity: 0.7;
-        }
-        50% {
-            opacity: 1;
-        }
-        100% {
-            opacity: 0.7;
-        }
+        display: none !important;  /* добавить !important */
     }
 
     @media (max-width: 768px) {
