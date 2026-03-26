@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ozon Order Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-cabinet="shinorama">
+    <div class="container">
+        <div class="auth-panel" id="authPanel">
+            <div class="auth-form">
+                <input type="password" id="passwordInput" placeholder="Введите пароль" class="auth-input">
+                <button id="authBtn" class="auth-btn">Войти</button>
+            </div>
+            <div id="authError" class="error-message" style="display:none;"></div>
+        </div>
+
+        <div id="mainContent" style="display:none;">
+            <div class="header-top">
+                <div class="cabinet-buttons">
+                    <button class="cabinet-btn" data-cabinet="shinorama">Шинорама</button>
+                    <button class="cabinet-btn" data-cabinet="trecktrack">TreckTrack</button>
+                    <button class="cabinet-btn" data-cabinet="sevenhundredshin">700shin</button>
+                </div>
+                <div id="connectionStatus" class="connection-status hidden">
+                    ⚠️ Нет соединения с сервером
+                </div>
+            </div>
+
+            <div class="content">
+                <div class="cabinet-info">
+                    Активный кабинет: <strong id="activeCabinet">Шинорама</strong>
+                </div>
+
+                <div class="stats-row">
+                    <div class="stats-panel" id="statsPanel">
+                        <span>📊 Выделено: <strong id="selectedOrdersCount">0</strong> заказов</span>
+                        <span>📦 Товаров: <strong id="selectedProductsCount">0</strong></span>
+                        <span>💰 Сумма: <strong id="selectedTotalPrice">0</strong> ₽</span>
+                    </div>
+                    <div class="stats-panel issues-panel" id="issuesPanel">
+                        <span>⚠️ Требуют страну: <strong id="countryRequiredCount">0</strong></span>
+                        <span>🏷️ Маркировка: <strong id="markingRequiredCount">0</strong> (🔖 доступно: <strong id="availableCodesCount">0</strong>)</span>
+                        <span>📄 Требуют ГТД: <strong id="gtdRequiredCount">0</strong></span>
+                    </div>
+                </div>
+
+                <div class="action-bar">
+                    <div class="action-buttons">
+                        <button id="loadOrdersBtn" class="primary-btn">📦 Загрузить заказы</button>
+                        <button id="shipOrdersBtn" class="split-btn">🚀 Разделить и отправить</button>
+                    </div>
+                </div>
+                
+                <div id="ordersContainer" style="display:none;">
+                    <div class="table-wrapper">
+                        <table class="orders-table">
+                            <thead>
+                                <tr>
+                                    <th class="checkbox-cell"><input type="checkbox" id="selectAllLeft"></th>
+                                    <th>Номер заказа</th>
+                                    <th>Статус</th>
+                                    <th>Товары</th>
+                                    <th class="quantity-header">Кол-во</th>
+                                    <th class="price-cell">Сумма</th>
+                                    <th class="checkbox-cell"><input type="checkbox" id="selectAllRight"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="ordersList"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-buttons-bottom">
+                        <button id="loadOrdersBtnBottom" class="primary-btn">📦 Загрузить заказы</button>
+                        <button id="shipOrdersBtnBottom" class="split-btn">🚀 Разделить и отправить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для маркировки и ГТД -->
+    <div id="markingModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🏷️ Добавление маркировки и ГТД</h3>
+                <span class="modal-close" data-modal="marking">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="markingProductInfo"></p>
+                <p id="markingCodesInfo"></p>
+                <div class="modal-buttons">
+                    <button id="markingConfirmBtn" class="primary-btn">✅ Добавить</button>
+                    <button id="markingCancelBtn" class="secondary-btn">❌ Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для страны производителя -->
+    <div id="countryModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🌍 Выбор страны производителя</h3>
+                <span class="modal-close-country" data-modal="country">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="countryProductInfo"></p>
+                <div class="country-search-container">
+                    <input type="text" id="countrySearchInput" class="country-search-input" placeholder="🔍 Поиск страны или введите код (RU, CN, DE)...">
+                </div>
+                <select id="countrySelect" class="country-select" size="8"></select>
+                <div class="modal-buttons">
+                    <button id="countryConfirmBtn" class="primary-btn">✅ Сохранить</button>
+                    <button id="countryCancelBtn" class="secondary-btn">❌ Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div class="app-footer">
+        <span class="version">700-OZON Api Cabinet <strong>v0.2.7</strong></span>
+        <span class="slogan">Меньше рутины. Больше роста.</span>
+    </div>
+
+    <script>
+        let isAuth = false;
+        let orders = [];
+        let authToken = localStorage.getItem('authToken');
+        let allCountries = [];
+
+        // Глобальные переменные для текущих действий
+        let currentMarkingData = null;
+        let currentCountryData = null;
+
+        function showToast(msg, isErr = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.className = 'toast show ' + (isErr ? 'error' : 'success');
+            setTimeout(() => toast.className = 'toast', 3000);
+        }
+
+        function setConnectionStatus(connected) {
+            const statusDiv = document.getElementById('connectionStatus');
+            if (statusDiv) {
+                if (connected) statusDiv.classList.add('hidden');
+                else statusDiv.classList.remove('hidden');
+            }
+        }
+
+        async function apiRequest(url, opts = {}) {
+            const headers = { 'Content-Type': 'application/json', ...opts.headers };
+            if (authToken) headers['X-Auth-Token'] = authToken;
+            
+            try {
+                const res = await fetch(url, { ...opts, headers });
+                setConnectionStatus(true);
+                
+                if (res.status === 401) {
+                    authToken = null;
+                    localStorage.removeItem('authToken');
+                    document.getElementById('mainContent').style.display = 'none';
+                    document.getElementById('authPanel').style.display = 'block';
+                    showToast('Сессия истекла', true);
+                    throw new Error('unauthorized');
+                }
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Ошибка запроса');
+                }
+                return res.json();
+            } catch (err) {
+                if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+                    setConnectionStatus(false);
+                    throw new Error('Нет соединения с сервером');
+                }
+                throw err;
+            }
+        }
+
+        async function loadCountries() {
+            try {
+                const data = await apiRequest('/api/countries/list');
+                allCountries = data.countries || [];
+                allCountries.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+                filterCountries('');
+            } catch (err) {
+                console.error('Ошибка загрузки стран:', err);
+            }
+        }
+
+        function filterCountries(searchText) {
+            const select = document.getElementById('countrySelect');
+            const searchLower = searchText.toLowerCase().trim();
+            
+            select.innerHTML = '';
+            
+            const placeholder = document.createElement('option');
+            placeholder.disabled = true;
+            placeholder.selected = true;
+            placeholder.textContent = '🔍 ' + (searchText === '' ? 'Выберите страну из списка или начните ввод' : 'Результаты поиска');
+            placeholder.style.color = '#999';
+            placeholder.style.fontStyle = 'italic';
+            select.appendChild(placeholder);
+            
+            if (searchText === '') {
+                allCountries.forEach(country => {
+                    const option = document.createElement('option');
+                    option.value = country.code;
+                    option.textContent = `${country.name} (${country.code})`;
+                    select.appendChild(option);
+                });
+                return;
+            }
+            
+            const filtered = allCountries.filter(country => 
+                country.name.toLowerCase().includes(searchLower) ||
+                country.code.toLowerCase().includes(searchLower)
+            );
+            
+            if (filtered.length === 0) {
+                const addOption = document.createElement('option');
+                addOption.value = searchText.toUpperCase();
+                addOption.textContent = `➕ Добавить вручную: "${searchText.toUpperCase()}"`;
+                addOption.style.color = '#f57c00';
+                addOption.style.fontWeight = 'bold';
+                select.appendChild(addOption);
+                
+                const hint = document.createElement('option');
+                hint.disabled = true;
+                hint.textContent = '─ ─ ─  Введите код страны (RU, CN, DE)  ─ ─ ─';
+                hint.style.color = '#999';
+                hint.style.fontStyle = 'italic';
+                select.appendChild(hint);
+            } else {
+                filtered.forEach(country => {
+                    const option = document.createElement('option');
+                    option.value = country.code;
+                    option.textContent = `${country.name} (${country.code})`;
+                    select.appendChild(option);
+                });
+            }
+        }
+
+        async function updateAvailableCodes() {
+            try {
+                const data = await apiRequest('/api/codes/available');
+                document.getElementById('availableCodesCount').textContent = data.count;
+                return data.count;
+            } catch (e) {
+                return 0;
+            }
+        }
+
+        function updateIssuesStats() {
+            let countryRequired = 0, markingRequired = 0, gtdRequired = 0;
+            orders.forEach(order => {
+                order.products.forEach(product => {
+                    if (product.is_country_required) countryRequired += product.quantity;
+                    if (product.is_mandatory_marked) markingRequired += product.quantity;
+                    if (product.is_gtd_required) gtdRequired += product.quantity;
+                });
+            });
+            document.getElementById('countryRequiredCount').textContent = countryRequired;
+            document.getElementById('markingRequiredCount').textContent = markingRequired;
+            document.getElementById('gtdRequiredCount').textContent = gtdRequired;
+        }
+
+        function calcPrice(order) {
+            let total = 0;
+            order.products.forEach(p => {
+                const price = typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0);
+                total += price * p.quantity;
+            });
+            return total;
+        }
+
+        function updateStats() {
+            const selected = document.querySelectorAll('.order-row.selected');
+            document.getElementById('selectedOrdersCount').textContent = selected.length;
+            let prodCount = 0, totalPrice = 0;
+            selected.forEach(row => {
+                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+                if (order) {
+                    order.products.forEach(p => {
+                        if (!p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required) {
+                            prodCount += p.quantity;
+                            totalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
+                        }
+                    });
+                }
+            });
+            document.getElementById('selectedProductsCount').textContent = prodCount;
+            document.getElementById('selectedTotalPrice').textContent = totalPrice.toLocaleString('ru-RU');
+        }
+
+        function updateSelectAll() {
+            const left = document.getElementById('selectAllLeft');
+            const right = document.getElementById('selectAllRight');
+            const cbs = document.querySelectorAll('.order-checkbox:not([disabled])');
+            if (cbs.length === 0) {
+                if (left) left.checked = false;
+                if (right) right.checked = false;
+                return;
+            }
+            const all = Array.from(cbs).every(cb => cb.checked);
+            const some = Array.from(cbs).some(cb => cb.checked);
+            if (left) {
+                left.checked = all;
+                left.indeterminate = !all && some;
+            }
+            if (right) {
+                right.checked = all;
+                right.indeterminate = !all && some;
+            }
+        }
+
+        function selectAll(checked) {
+            document.querySelectorAll('.order-checkbox:not([disabled])').forEach(cb => cb.checked = checked);
+            document.querySelectorAll('.order-row').forEach(row => {
+                const cb = row.querySelector('td:first-child .order-checkbox');
+                if (cb && !cb.disabled) {
+                    if (checked) row.classList.add('selected');
+                    else row.classList.remove('selected');
+                }
+            });
+            updateSelectAll();
+            updateStats();
+        }
+
+        function syncCheckbox(cb, row) {
+            const num = cb.dataset.postingNumber;
+            document.querySelectorAll(`.order-checkbox[data-posting-number="${num}"]`).forEach(c => {
+                if (c !== cb) c.checked = cb.checked;
+            });
+            if (row && !cb.disabled) {
+                if (cb.checked) row.classList.add('selected');
+                else row.classList.remove('selected');
+            }
+            updateSelectAll();
+            updateStats();
+        }
+
+        function toggleRow(row, leftCb, rightCb) {
+            if (leftCb && leftCb.disabled) return;
+            const newState = !leftCb.checked;
+            leftCb.checked = newState;
+            if (rightCb) rightCb.checked = newState;
+            if (newState) row.classList.add('selected');
+            else row.classList.remove('selected');
+            updateSelectAll();
+            updateStats();
+        }
+
+        // === Окно маркировки ===
+        async function openMarkingModal(order, product) {
+            const available = await updateAvailableCodes();
+            if (available < product.quantity) {
+                showToast(`Нужно ${product.quantity} кодов, доступно ${available}`, true);
+                return;
+            }
+            
+            currentMarkingData = {
+                postingNumber: order.posting_number,
+                productId: product.product_id,
+                quantity: product.quantity,
+                productName: product.name
+            };
+            
+            const modal = document.getElementById('markingModal');
+            document.getElementById('markingProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Кол-во:</strong> ${product.quantity}`;
+            document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>⚠️ ГТД будет отмечено как отсутствующее автоматически.`;
+            modal.style.display = 'flex';
+        }
+
+        async function addMarkings() {
+            if (!currentMarkingData) {
+                showToast('Ошибка: не выбран товар', true);
+                return;
+            }
+            
+            showToast('Добавление маркировки...');
+            
+            const requestData = {
+                posting_number: currentMarkingData.postingNumber,
+                product_id: currentMarkingData.productId,
+                quantity: currentMarkingData.quantity,
+                gtd_absent: true
+            };
+            
+            console.log('📤 Отправка:', JSON.stringify(requestData));
+            
+            try {
+                const response = await fetch('/api/markings/add-with-gtd', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Auth-Token': authToken
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                console.log('📥 Статус:', response.status);
+                
+                const data = await response.json();
+                console.log('📦 Ответ:', data);
+                
+                if (data.status === 'ok') {
+                    showToast(`✅ ${data.message}. Осталось кодов: ${data.remaining}`);
+                    await updateAvailableCodes();
+                    closeAllModals();
+                    await loadOrders();
+                } else {
+                    showToast(`❌ ${data.message}`, true);
+                }
+            } catch (err) {
+                console.error('❌ Ошибка:', err);
+                showToast(`❌ Ошибка: ${err.message}`, true);
+            }
+        }
+
+        // === Окно страны ===
+        async function openCountryModal(order, product) {
+            await loadCountries();
+            const searchInput = document.getElementById('countrySearchInput');
+            if (searchInput) searchInput.value = '';
+            filterCountries('');
+            
+            currentCountryData = {
+                postingNumber: order.posting_number,
+                productId: product.product_id,
+                productName: product.name
+            };
+            
+            const modal = document.getElementById('countryModal');
+            document.getElementById('countryProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}`;
+            modal.style.display = 'flex';
+            setTimeout(() => searchInput?.focus(), 100);
+        }
+
+        async function setCountry() {
+            if (!currentCountryData) {
+                showToast('Ошибка: не выбран товар', true);
+                return;
+            }
+            
+            const select = document.getElementById('countrySelect');
+            const searchInput = document.getElementById('countrySearchInput');
+            let countryCode = select.value;
+            
+            if (countryCode === '' && searchInput.value.trim() !== '') {
+                const inputText = searchInput.value.trim().toUpperCase();
+                const found = allCountries.find(c => 
+                    c.name.toUpperCase() === inputText || c.code === inputText
+                );
+                countryCode = found ? found.code : inputText;
+            }
+            
+            if (!countryCode) {
+                showToast('Выберите страну производителя или введите код', true);
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/countries/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
+                    body: JSON.stringify({
+                        posting_number: currentCountryData.postingNumber,
+                        product_id: currentCountryData.productId,
+                        country_code: countryCode
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    showToast(`✅ ${data.message}`);
+                    closeAllModals();
+                    await loadOrders();
+                } else {
+                    showToast(`❌ ${data.message}`, true);
+                }
+            } catch (err) {
+                showToast(`❌ ${err.message}`, true);
+            }
+        }
+
+        function closeAllModals() {
+            document.getElementById('markingModal').style.display = 'none';
+            document.getElementById('countryModal').style.display = 'none';
+            currentMarkingData = null;
+            currentCountryData = null;
+        }
+
+        async function checkPassword() {
+            const pwd = document.getElementById('passwordInput').value;
+            const errDiv = document.getElementById('authError');
+            if (!pwd) {
+                errDiv.textContent = 'Введите пароль';
+                errDiv.style.display = 'block';
+                return;
+            }
+            try {
+                const res = await fetch('/api/check-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pwd })
+                });
+                if (!res.ok) throw new Error('Неверный пароль');
+                const data = await res.json();
+                if (data.token) {
+                    authToken = data.token;
+                    localStorage.setItem('authToken', authToken);
+                }
+                isAuth = true;
+                document.getElementById('authPanel').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                showToast('Добро пожаловать!');
+                await loadOrders();
+            } catch (err) {
+                errDiv.textContent = err.message;
+                errDiv.style.display = 'block';
+                showToast(err.message, true);
+            }
+        }
+
+        async function loadOrders() {
+            try {
+                showToast('Загрузка...');
+                const data = await apiRequest('/api/orders');
+                orders = data.orders;
+                
+                const tbody = document.getElementById('ordersList');
+                if (orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
+                } else {
+                    tbody.innerHTML = orders.map((order, i) => {
+                        const price = calcPrice(order);
+                        const hasIssues = order.products.some(p => p.is_mandatory_marked || p.is_gtd_required || p.is_country_required);
+                        const totalQuantity = order.products.reduce((sum, p) => sum + p.quantity, 0);
+                        return `
+                            <tr class="order-row ${hasIssues ? 'has-issues' : ''}" data-posting-number="${order.posting_number}">
+                                <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${hasIssues ? 'disabled' : ''}></td>
+                                <td class="posting-number">${escapeHtml(order.posting_number)}</td>
+                                <td class="status-cell"><span class="status-badge status-${order.status}">${getStatusText(order.status)}</span></td>
+                                <td class="products-cell">
+                                    ${order.products.map(p => {
+                                        let warnings = [];
+                                        if (p.is_mandatory_marked) warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
+                                        if (p.is_gtd_required) warnings.push('<span class="gtd-warning clickable" data-action="marking">📄 Требуется ГТД</span>');
+                                        if (p.is_country_required) warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
+                                        return `
+                                            <div class="product-item" data-pid="${p.product_id}" data-name="${escapeHtml(p.name)}" data-qty="${p.quantity}">
+                                                <span class="product-name">${escapeHtml(p.name)}</span>
+                                                <div class="warnings">${warnings.join(' ')}</div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </td>
+                                <td class="quantity-cell"><span class="quantity-value">${totalQuantity}</span></td>
+                                <td class="price-cell">${price.toLocaleString('ru-RU')} ₽</td>
+                                <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${hasIssues ? 'disabled' : ''}></td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+                
+                document.getElementById('ordersContainer').style.display = 'block';
+                
+                // Обработчики строк
+                document.querySelectorAll('.order-row').forEach(row => {
+                    const leftCb = row.querySelector('td:first-child .order-checkbox');
+                    const rightCb = row.querySelector('td:last-child .order-checkbox');
+                    if (leftCb) leftCb.addEventListener('change', (e) => { e.stopPropagation(); syncCheckbox(leftCb, row); });
+                    if (rightCb) rightCb.addEventListener('change', (e) => { e.stopPropagation(); syncCheckbox(rightCb, row); });
+                    row.addEventListener('click', (e) => {
+                        if (e.target.type === 'checkbox' || e.target.classList.contains('clickable')) return;
+                        toggleRow(row, leftCb, rightCb);
+                    });
+                });
+                
+                // Обработчики клика по предупреждениям
+                document.querySelectorAll('.clickable').forEach(el => {
+                    el.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const action = el.dataset.action;
+                        const productDiv = el.closest('.product-item');
+                        if (productDiv) {
+                            const row = productDiv.closest('.order-row');
+                            const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+                            const product = order?.products.find(p => p.product_id === parseInt(productDiv.dataset.pid));
+                            if (product) {
+                                if (action === 'marking') {
+                                    await openMarkingModal(order, product);
+                                } else if (action === 'country') {
+                                    await openCountryModal(order, product);
+                                }
+                            }
+                        }
+                    });
+                });
+                
+                const leftAll = document.getElementById('selectAllLeft');
+                const rightAll = document.getElementById('selectAllRight');
+                if (leftAll) leftAll.onchange = () => selectAll(leftAll.checked);
+                if (rightAll) rightAll.onchange = () => selectAll(rightAll.checked);
+                
+                updateSelectAll();
+                updateStats();
+                updateIssuesStats();
+                await updateAvailableCodes();
+                showToast(`Загружено ${orders.length} заказов`);
+            } catch (err) {
+                console.error('Load error:', err);
+                if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
+            }
+        }
+
+        function getStatusText(s) {
+            const map = {
+                'awaiting_packaging': 'Ожидает сборки',
+                'awaiting_deliver': 'Ожидает отгрузки',
+                'delivering': 'В доставке',
+                'delivered': 'Доставлен',
+                'cancelled': 'Отменен'
+            };
+            return map[s] || s;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function shipOrders() {
+            const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
+            if (cbs.length === 0) {
+                showToast('Выберите заказы', true);
+                return;
+            }
+            
+            const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
+            const toShip = [];
+            for (const num of numbers) {
+                const order = orders.find(o => o.posting_number === num);
+                if (order && order.status === 'awaiting_packaging') {
+                    const valid = order.products.filter(p => !p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required);
+                    if (valid.length) {
+                        toShip.push({
+                            posting_number: num,
+                            products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
+                        });
+                    }
+                }
+            }
+            
+            if (toShip.length === 0) {
+                showToast('Нет заказов для отправки (необходимо решить вопросы с маркировкой/ГТД или страной)', true);
+                return;
+            }
+            
+            try {
+                showToast(`Отправка ${toShip.length} заказов...`);
+                const data = await apiRequest('/api/orders/ship', {
+                    method: 'POST',
+                    body: JSON.stringify({ orders: toShip })
+                });
+                
+                let ok = 0, err = 0;
+                data.results.forEach(r => {
+                    if (r.status === 'success') {
+                        ok++;
+                        showToast(r.message);
+                    } else {
+                        err++;
+                        showToast(`Ошибка: ${r.error}`, true);
+                    }
+                });
+                showToast(`✅${ok} ${err ? `❌${err}` : ''}`);
+                setTimeout(() => loadOrders(), 2000);
+            } catch (err) {
+                if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
+            }
+        }
+
+        async function switchCabinet(cabinet) {
+            try {
+                const colors = { shinorama: '#e8f5e9', trecktrack: '#fff9c4', sevenhundredshin: '#ffebee' };
+                const names = { shinorama: 'Шинорама', trecktrack: 'TreckTrack', sevenhundredshin: '700shin' };
+                
+                document.body.setAttribute('data-cabinet', cabinet);
+                document.body.style.backgroundColor = colors[cabinet];
+                
+                await apiRequest('/api/cabinet/switch', {
+                    method: 'POST',
+                    body: JSON.stringify({ cabinet })
+                });
+                
+                const activeSpan = document.getElementById('activeCabinet');
+                if (activeSpan) activeSpan.textContent = names[cabinet];
+                showToast(`Переключено на ${names[cabinet]}`);
+                
+                document.getElementById('ordersContainer').style.display = 'none';
+                document.getElementById('ordersList').innerHTML = '';
+                orders = [];
+                updateStats();
+                
+                await loadOrders();
+            } catch (err) {
+                console.error('Switch error:', err);
+                if (err.message !== 'unauthorized') showToast('Ошибка переключения: ' + err.message, true);
+            }
+        }
+
+        async function checkConnection() {
+            try {
+                await fetch('/api/codes/available', { method: 'HEAD' });
+                setConnectionStatus(true);
+            } catch {
+                setConnectionStatus(false);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkConnection();
+            
+            if (authToken) {
+                isAuth = true;
+                document.getElementById('authPanel').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                updateAvailableCodes();
+                loadOrders();
+            }
+            
+            document.getElementById('authBtn').onclick = checkPassword;
+            document.getElementById('passwordInput').onkeypress = (e) => { if (e.key === 'Enter') checkPassword(); };
+            document.getElementById('loadOrdersBtn').onclick = loadOrders;
+            document.getElementById('loadOrdersBtnBottom').onclick = loadOrders;
+            document.getElementById('shipOrdersBtn').onclick = shipOrders;
+            document.getElementById('shipOrdersBtnBottom').onclick = shipOrders;
+            
+            document.getElementById('markingConfirmBtn').onclick = addMarkings;
+            document.getElementById('markingCancelBtn').onclick = closeAllModals;
+            document.getElementById('countryConfirmBtn').onclick = setCountry;
+            document.getElementById('countryCancelBtn').onclick = closeAllModals;
+            
+            const searchInput = document.getElementById('countrySearchInput');
+            if (searchInput) searchInput.addEventListener('input', (e) => filterCountries(e.target.value));
+            
+            document.querySelectorAll('.modal-close, .modal-close-country').forEach(el => {
+                if (el) el.onclick = closeAllModals;
+            });
+            
+            document.querySelectorAll('.cabinet-btn').forEach(btn => {
+                btn.onclick = () => { if (isAuth) switchCabinet(btn.dataset.cabinet); };
+            });
+        });
+    </script>
+</body>
+</html>
