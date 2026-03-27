@@ -38,8 +38,7 @@
                     </div>
                     <div class="stats-panel issues-panel" id="issuesPanel">
                         <span>⚠️ Требуют страну: <strong id="countryRequiredCount">0</strong></span>
-                        <span>🏷️ Маркировка: <strong id="markingRequiredCount">0</strong> (🔖 доступно: <strong id="availableCodesCount">0</strong>)</span>
-                        <span>📄 Требуют ГТД: <strong id="gtdRequiredCount">0</strong></span>
+                        <span>🏷️ Маркировка + ГТД: <strong id="markingRequiredCount">0</strong> (🔖 доступно: <strong id="availableCodesCount">0</strong>)</span>
                     </div>
                 </div>
 
@@ -118,7 +117,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.2.8</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.4.1 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -268,17 +267,21 @@
         }
 
         function updateIssuesStats() {
-            let countryRequired = 0, markingRequired = 0, gtdRequired = 0;
+            let countryRequired = 0;
+            let markingRequired = 0; // объединяем маркировку и ГТД
+            
             orders.forEach(order => {
                 order.products.forEach(product => {
                     if (product.is_country_required) countryRequired += product.quantity;
-                    if (product.is_mandatory_marked) markingRequired += product.quantity;
-                    if (product.is_gtd_required) gtdRequired += product.quantity;
+                    // Объединяем маркировку и ГТД в один счетчик
+                    if ((product.is_mandatory_marked || product.is_gtd_required) && !product.is_marking_completed) {
+                        markingRequired += product.quantity;
+                    }
                 });
             });
+            
             document.getElementById('countryRequiredCount').textContent = countryRequired;
             document.getElementById('markingRequiredCount').textContent = markingRequired;
-            document.getElementById('gtdRequiredCount').textContent = gtdRequired;
         }
 
         function calcPrice(order) {
@@ -560,11 +563,19 @@
                                 <td class="products-cell">
                                     ${order.products.map(p => {
                                         let warnings = [];
-                                        if (p.is_mandatory_marked) warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
-                                        if (p.is_gtd_required) warnings.push('<span class="gtd-warning clickable" data-action="marking">📄 Требуется ГТД</span>');
-                                        if (p.is_country_required) warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
+                                        // Если требуется маркировка и еще не выполнена
+                                        if ((p.is_mandatory_marked || p.is_gtd_required) && !p.is_marking_completed) {
+                                            warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
+                                        }
+                                        // Если маркировка уже выполнена - показываем зеленую галочку
+                                        if (p.is_marking_completed) {
+                                            warnings.push('<span class="mark-completed">✅ Маркировка + ГТД добавлены</span>');
+                                        }
+                                        if (p.is_country_required) {
+                                            warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
+                                        }
                                         return `
-                                            <div class="product-item" data-pid="${p.product_id}" data-name="${escapeHtml(p.name)}" data-qty="${p.quantity}">
+                                            <div class="product-item" data-pid="${p.product_id}" data-name="${escapeHtml(p.name)}" data-qty="${p.quantity}" data-marking-completed="${p.is_marking_completed}">
                                                 <span class="product-name">${escapeHtml(p.name)}</span>
                                                 <div class="warnings">${warnings.join(' ')}</div>
                                             </div>

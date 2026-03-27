@@ -452,6 +452,16 @@ body:not([data-cabinet]) {
     font-weight: 500;
 }
 
+.mark-completed {
+    font-size: 11px;
+    color: #2e7d32;
+    background-color: #e8f5e9;
+    padding: 2px 8px;
+    border-radius: 12px;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
 .country-select {
     width: 100%;
     padding: 10px;

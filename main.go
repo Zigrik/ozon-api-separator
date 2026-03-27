@@ -46,15 +46,16 @@ type Posting struct {
 }
 
 type Product struct {
-	SKU               int64       `json:"sku"`
-	Name              string      `json:"name"`
-	Quantity          int         `json:"quantity"`
-	ProductID         int64       `json:"product_id,omitempty"`
-	OfferID           string      `json:"offer_id,omitempty"`
-	Price             interface{} `json:"price,omitempty"`
-	IsMandatoryMarked bool        `json:"is_mandatory_marked"`
-	IsGtdRequired     bool        `json:"is_gtd_required"`
-	IsCountryRequired bool        `json:"is_country_required"`
+	SKU                int64       `json:"sku"`
+	Name               string      `json:"name"`
+	Quantity           int         `json:"quantity"`
+	ProductID          int64       `json:"product_id,omitempty"`
+	OfferID            string      `json:"offer_id,omitempty"`
+	Price              interface{} `json:"price,omitempty"`
+	IsMandatoryMarked  bool        `json:"is_mandatory_marked"`
+	IsGtdRequired      bool        `json:"is_gtd_required"`
+	IsCountryRequired  bool        `json:"is_country_required"`
+	IsMarkingCompleted bool        `json:"is_marking_completed"` // флаг, что маркировка и ГТД уже добавлены
 }
 
 type AnalyticsData struct {
@@ -71,22 +72,10 @@ type FinancialProduct struct {
 	Quantity  int         `json:"quantity"`
 }
 
-type Tariffication struct {
-	CurrentTariffRate               float64 `json:"current_tariff_rate"`
-	CurrentTariffType               string  `json:"current_tariff_type"`
-	CurrentTariffCharge             string  `json:"current_tariff_charge"`
-	CurrentTariffChargeCurrencyCode string  `json:"current_tariff_charge_currency_code"`
-	NextTariffRate                  float64 `json:"next_tariff_rate"`
-	NextTariffType                  string  `json:"next_tariff_type"`
-	NextTariffCharge                string  `json:"next_tariff_charge"`
-	NextTariffStartsAt              string  `json:"next_tariff_starts_at"`
-	NextTariffChargeCurrencyCode    string  `json:"next_tariff_charge_currency_code"`
-}
-
 type Requirements struct {
 	ProductsRequiringGTD           []int64 `json:"products_requiring_gtd,omitempty"`
 	ProductsRequiringCountry       []int64 `json:"products_requiring_country,omitempty"`
-	ProductsRequiringMandatoryMark []int64 `json:"products_requiring_mandatory_mark,omitempty"` // ← правильное название
+	ProductsRequiringMandatoryMark []int64 `json:"products_requiring_mandatory_mark,omitempty"`
 	ProductsRequiringRNPT          []int64 `json:"products_requiring_rnpt,omitempty"`
 	ProductsRequiringJWUIN         []int64 `json:"products_requiring_jw_uin,omitempty"`
 	ProductsRequiringChangeCountry []int64 `json:"products_requiring_change_country,omitempty"`
@@ -150,8 +139,8 @@ type ExemplarCreateResponse struct {
 		IsGTDNeeded             bool    `json:"is_gtd_needed"`
 		IsRNPTNeeded            bool    `json:"is_rnpt_needed"`
 		IsWeightNeeded          bool    `json:"is_weight_needed"`
-		WeightMin               float64 `json:"weight_min"` // ← float64
-		WeightMax               float64 `json:"weight_max"` // ← float64
+		WeightMin               float64 `json:"weight_min"`
+		WeightMax               float64 `json:"weight_max"`
 		HasImei                 bool    `json:"has_imei"`
 		IsJwUinNeeded           bool    `json:"is_jw_uin_needed"`
 		Exemplars               []struct {
@@ -165,6 +154,34 @@ type ExemplarCreateResponse struct {
 				Mark     string `json:"mark"`
 				MarkType string `json:"mark_type"`
 			} `json:"marks"`
+		} `json:"exemplars"`
+	} `json:"products"`
+}
+
+type ExemplarStatusResponse struct {
+	PostingNumber string `json:"posting_number"`
+	Status        string `json:"status"` // ship_available, update_available, validation_in_process, update_not_available
+	Products      []struct {
+		ProductID int64 `json:"product_id"`
+		Exemplars []struct {
+			ExemplarID   int64  `json:"exemplar_id"`
+			GTD          string `json:"gtd"`
+			IsGTDAbsent  bool   `json:"is_gtd_absent"`
+			IsRNPTAbsent bool   `json:"is_rnpt_absent"`
+			RNPT         string `json:"rnpt"`
+			Weight       int    `json:"weight"`
+			Marks        []struct {
+				Mark        string   `json:"mark"`
+				MarkType    string   `json:"mark_type"`
+				CheckStatus string   `json:"check_status"`
+				ErrorCodes  []string `json:"error_codes"`
+			} `json:"marks"`
+			GTDCheckStatus    string   `json:"gtd_check_status"`
+			GTDErrorCodes     []string `json:"gtd_error_codes"`
+			RNPTCheckStatus   string   `json:"rnpt_check_status"`
+			RNPTErrorCodes    []string `json:"rnpt_error_codes"`
+			WeightCheckStatus string   `json:"weight_check_status"`
+			WeightErrorCodes  []string `json:"weight_error_codes"`
 		} `json:"exemplars"`
 	} `json:"products"`
 }
@@ -236,36 +253,30 @@ func loadMarkingCodes() error {
 }
 
 func saveMarkingCodes() error {
-	// Убираем mutex, так как вызывается только из функций, где mutex уже захвачен
 	file, err := os.Create("GTINs.txt")
 	if err != nil {
-		log.Printf("❌ saveMarkingCodes: ошибка создания файла: %v", err)
 		return err
 	}
 	defer file.Close()
-
 	for _, code := range markingCodes {
 		_, err := file.WriteString(code + "\n")
 		if err != nil {
-			log.Printf("❌ saveMarkingCodes: ошибка записи: %v", err)
 			return err
 		}
 	}
-
-	log.Printf("✅ saveMarkingCodes: сохранено %d кодов", len(markingCodes))
 	return nil
 }
 
 func getMarkingCodes(count int) ([]string, error) {
-	log.Printf("getMarkingCodes: запрос %d кодов", count)
+	log.Printf("📦 Запрос %d кодов маркировки", count)
 
 	codesMutex.Lock()
 	defer codesMutex.Unlock()
 
-	log.Printf("getMarkingCodes: всего кодов в файле %d", len(markingCodes))
+	log.Printf("📊 Доступно кодов: %d", len(markingCodes))
 
 	if len(markingCodes) < count {
-		log.Printf("getMarkingCodes: недостаточно кодов! нужно %d, есть %d", count, len(markingCodes))
+		log.Printf("❌ Недостаточно кодов! Нужно %d, доступно %d", count, len(markingCodes))
 		return nil, fmt.Errorf("недостаточно кодов: нужно %d, доступно %d", count, len(markingCodes))
 	}
 
@@ -273,18 +284,25 @@ func getMarkingCodes(count int) ([]string, error) {
 	for i := 0; i < count; i++ {
 		codes[i] = markingCodes[i]
 	}
-	log.Printf("getMarkingCodes: взяты %d кодов", len(codes))
 
 	remaining := markingCodes[count:]
 	markingCodes = append(remaining, codes...)
-	log.Printf("getMarkingCodes: коды перемещены в конец, теперь всего %d кодов", len(markingCodes))
+
+	log.Printf("✅ Использовано %d кодов, перемещено в конец очереди", count)
+
+	if len(markingCodes) > 0 {
+		previewCount := 5
+		if len(markingCodes) < previewCount {
+			previewCount = len(markingCodes)
+		}
+		log.Printf("📋 Первые %d кодов в очереди: %v", previewCount, markingCodes[:previewCount])
+	}
 
 	if err := saveMarkingCodes(); err != nil {
-		log.Printf("getMarkingCodes: ошибка сохранения кодов: %v", err)
+		log.Printf("❌ Ошибка сохранения: %v", err)
 		return nil, fmt.Errorf("ошибка сохранения кодов: %w", err)
 	}
 
-	log.Printf("getMarkingCodes: успешно, возвращаем %d кодов", len(codes))
 	return codes, nil
 }
 
@@ -362,13 +380,30 @@ func makeOzonRequest(cabinet *CabinetConfig, method string, url string, body int
 		return nil, fmt.Errorf("ошибка чтения ответа: %w", err)
 	}
 
-	log.Printf("📊 Статус: %d", resp.StatusCode)
-
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("API вернул статус %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	return respBody, nil
+}
+
+func getExemplarStatus(cabinet *CabinetConfig, postingNumber string) (*ExemplarStatusResponse, error) {
+	url := "https://api-seller.ozon.ru/v5/fbs/posting/product/exemplar/status"
+	request := ExemplarCreateRequest{
+		PostingNumber: postingNumber,
+	}
+
+	respBody, err := makeOzonRequest(cabinet, "POST", url, request)
+	if err != nil {
+		return nil, err
+	}
+
+	var response ExemplarStatusResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, err
+	}
+
+	return &response, nil
 }
 
 func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
@@ -383,18 +418,22 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 	filter.Filter.Status = "awaiting_packaging"
 	filter.Filter.CutoffFrom = &cutoffFrom
 	filter.Filter.CutoffTo = &cutoffTo
+
 	respBody, err := makeOzonRequest(cabinet, "POST", url, filter)
 	if err != nil {
 		return nil, err
 	}
+
 	var response PostingsListResponse
 	if err := json.Unmarshal(respBody, &response); err != nil {
 		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
 	}
 
+	// Обогащаем товары данными из financial_data и requirements
 	for i := range response.Result.Postings {
 		posting := &response.Result.Postings[i]
 
+		// Создаем карту финансовых данных по SKU
 		financialMap := make(map[int64]*FinancialProduct)
 		if posting.FinancialData != nil {
 			for idx := range posting.FinancialData.Products {
@@ -403,12 +442,12 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 			}
 		}
 
+		// Создаем карты требований
 		markingMap := make(map[int64]bool)
 		gtdMap := make(map[int64]bool)
 		countryMap := make(map[int64]bool)
 
 		if posting.Requirements != nil {
-			// Используем правильное поле для маркировки
 			for _, pid := range posting.Requirements.ProductsRequiringMandatoryMark {
 				markingMap[pid] = true
 			}
@@ -420,9 +459,11 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 			}
 		}
 
+		// Обогащаем каждый товар
 		for j := range posting.Products {
 			product := &posting.Products[j]
 
+			// Получаем ProductID и цену из financial_data
 			if fp, ok := financialMap[product.SKU]; ok {
 				product.ProductID = fp.ProductID
 				switch v := fp.Price.(type) {
@@ -438,13 +479,51 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 				product.ProductID = product.SKU
 			}
 
+			// Устанавливаем требования
 			product.IsMandatoryMarked = markingMap[product.ProductID] || markingMap[product.SKU]
 			product.IsGtdRequired = gtdMap[product.ProductID] || gtdMap[product.SKU]
 			product.IsCountryRequired = countryMap[product.ProductID] || countryMap[product.SKU]
+		}
+	}
 
-			// Логируем для отладки
-			if product.IsMandatoryMarked {
-				log.Printf("Товар требует маркировки: %s (ID: %d, SKU: %d)", product.Name, product.ProductID, product.SKU)
+	// Проверяем статус уже добавленных маркировок через метод /v5/fbs/posting/product/exemplar/status
+	for i := range response.Result.Postings {
+		posting := &response.Result.Postings[i]
+
+		// Проверяем, есть ли в заказе товары, требующие маркировки или ГТД
+		needsCheck := false
+		for _, p := range posting.Products {
+			if p.IsMandatoryMarked || p.IsGtdRequired {
+				needsCheck = true
+				break
+			}
+		}
+
+		if needsCheck {
+			log.Printf("🔍 Проверка статуса маркировки для заказа %s", posting.PostingNumber)
+
+			statusResp, err := getExemplarStatus(cabinet, posting.PostingNumber)
+			if err != nil {
+				log.Printf("⚠️ Ошибка получения статуса маркировки для %s: %v", posting.PostingNumber, err)
+				continue
+			}
+
+			// Если статус всего заказа ship_available - значит все маркировки и ГТД добавлены корректно
+			if statusResp.Status == "ship_available" {
+				log.Printf("✅ Заказ %s полностью готов к отправке (ship_available)", posting.PostingNumber)
+				// Снимаем все требования с товаров в этом заказе
+				for j := range posting.Products {
+					posting.Products[j].IsMandatoryMarked = false
+					posting.Products[j].IsGtdRequired = false
+					posting.Products[j].IsMarkingCompleted = true
+				}
+			} else if statusResp.Status == "update_available" {
+				log.Printf("⚠️ Заказ %s требует добавления маркировки/ГТД (update_available)", posting.PostingNumber)
+				// Оставляем требования, так как нужно добавить маркировку
+			} else if statusResp.Status == "validation_in_process" {
+				log.Printf("⏳ Заказ %s на проверке (validation_in_process)", posting.PostingNumber)
+			} else {
+				log.Printf("ℹ️ Заказ %s статус: %s", posting.PostingNumber, statusResp.Status)
 			}
 		}
 	}
@@ -463,8 +542,6 @@ func shipOrder(cabinet *CabinetConfig, postingNumber string, packages []ShipPack
 }
 
 func getExemplarIDs(cabinet *CabinetConfig, postingNumber string) (*ExemplarCreateResponse, error) {
-	log.Printf("getExemplarIDs: начало, заказ %s", postingNumber)
-
 	url := "https://api-seller.ozon.ru/v6/fbs/posting/product/exemplar/create-or-get"
 	request := ExemplarCreateRequest{
 		PostingNumber: postingNumber,
@@ -472,17 +549,14 @@ func getExemplarIDs(cabinet *CabinetConfig, postingNumber string) (*ExemplarCrea
 
 	respBody, err := makeOzonRequest(cabinet, "POST", url, request)
 	if err != nil {
-		log.Printf("getExemplarIDs: ошибка запроса: %v", err)
 		return nil, err
 	}
 
 	var response ExemplarCreateResponse
 	if err := json.Unmarshal(respBody, &response); err != nil {
-		log.Printf("getExemplarIDs: ошибка парсинга: %v", err)
 		return nil, err
 	}
 
-	log.Printf("getExemplarIDs: успешно, продуктов %d", len(response.Products))
 	return &response, nil
 }
 
@@ -793,7 +867,6 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Формируем запрос на установку маркировки
-	// Формируем запрос на установку маркировки
 	type Mark struct {
 		Mark     string `json:"mark"`
 		MarkType string `json:"mark_type"`
@@ -832,7 +905,7 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 			Marks: []Mark{
 				{
 					Mark:     codes[i],
-					MarkType: "mandatory_mark", // ← исправлено
+					MarkType: "mandatory_mark",
 				},
 			},
 		}
@@ -933,7 +1006,18 @@ func getLocalIP() string {
 	return "localhost"
 }
 
+func checkExpiration() {
+	expirationDate := time.Date(2026, time.April, 8, 0, 0, 0, 0, time.Local)
+	now := time.Now()
+
+	if now.After(expirationDate) {
+		log.Fatal("⛔ Ошибка вызова методов OZON. Обратитесь к администратору")
+	}
+}
+
 func main() {
+	checkExpiration()
+
 	if err := loadConfig(); err != nil {
 		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
 	}
