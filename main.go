@@ -412,7 +412,7 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 	cutoffFrom := now.AddDate(0, 0, -30)
 	cutoffTo := now.AddDate(0, 0, 7)
 	filter := PostingsFilter{
-		Limit:  100,
+		Limit:  1000,
 		Offset: 0,
 	}
 	filter.Filter.Status = "awaiting_packaging"
@@ -1015,6 +1015,39 @@ func checkExpiration() {
 	}
 }
 
+// API: получение настроек из .env
+func handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	loadingText := os.Getenv("LOADING_TEXT")
+	if loadingText == "" {
+		loadingText = "Трудолюбивые ослики делят и сортируют ваши заказы..."
+	}
+
+	// Проверяем наличие файла not_donkey.png
+	imagePath := "static/images/not_donkey.png"
+	log.Printf("🔍 Проверка файла: %s", imagePath)
+
+	customImage := ""
+	if _, err := os.Stat(imagePath); err == nil {
+		customImage = "not_donkey.png"
+		log.Printf("✅ Найден файл картинки: %s", imagePath)
+	} else {
+		log.Printf("❌ Файл не найден: %s, ошибка: %v", imagePath, err)
+	}
+
+	log.Printf("📢 Настройки: loading_text='%s', custom_image='%s'", loadingText, customImage)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":       "ok",
+		"loading_text": loadingText,
+		"custom_image": customImage,
+	})
+}
+
 func main() {
 	checkExpiration()
 
@@ -1043,6 +1076,7 @@ func main() {
 	http.HandleFunc("/api/markings/add-with-gtd", authMiddleware(handleAddMarkingsWithGTD))
 	http.HandleFunc("/api/countries/list", authMiddleware(handleGetCountries))
 	http.HandleFunc("/api/countries/set", authMiddleware(handleSetCountry))
+	http.HandleFunc("/api/settings", handleGetSettings)
 
 	port := os.Getenv("PORT")
 	if port == "" {

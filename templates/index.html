@@ -117,19 +117,23 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.4.2</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.4.3</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
     <script>
+        // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
         let isAuth = false;
         let orders = [];
         let authToken = localStorage.getItem('authToken');
         let allCountries = [];
-
         let currentMarkingData = null;
         let currentCountryData = null;
-
+        
+        // ========== НАСТРОЙКИ ДЛЯ ОВЕРЛЕЯ ==========
+        let loadingText = "Трудолюбивые ослики делят и сортируют ваши заказы...";
+        let customImage = null;
+        
         // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
         function showToast(msg, isErr = false) {
             const toast = document.getElementById('toast');
@@ -137,7 +141,8 @@
             toast.className = 'toast show ' + (isErr ? 'error' : 'success');
             setTimeout(() => toast.className = 'toast', 3000);
         }
-
+        
+        // Функция для показа оверлея
         function showOverlay() {
             let overlay = document.getElementById('loadingOverlay');
             if (overlay) {
@@ -147,21 +152,43 @@
             overlay = document.createElement('div');
             overlay.id = 'loadingOverlay';
             overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:9999;backdrop-filter:blur(3px);';
+            
+            // Определяем, что показывать: картинку или эмодзи
+            let imageHtml = '';
+            if (customImage) {
+                imageHtml = `<img src="/static/images/${customImage}" style="width:80px;height:80px;object-fit:contain;animation:bounce 1s infinite ease-in-out;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'font-size:64px;animation:bounce 1s infinite ease-in-out;\'>🐴</div>';">`;
+            } else {
+                imageHtml = `<div style="font-size:64px;animation:bounce 1s infinite ease-in-out;">🐴</div>`;
+            }
+            
             overlay.innerHTML = `
-                <div style="background:white;border-radius:20px;padding:30px 40px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);animation:fadeInUp 0.3s ease;">
-                    <div style="font-size:64px;animation:bounce 1s infinite ease-in-out;">🐴</div>
-                    <div style="font-size:18px;font-weight:500;color:#333;margin:20px 0 15px 0;">Трудолюбивые ослики делят и сортируют ваши заказы...</div>
+                <div style="background:white;border-radius:20px;padding:30px 40px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);animation:fadeInUp 0.3s ease;max-width:400px;">
+                    ${imageHtml}
+                    <div style="font-size:18px;font-weight:500;color:#333;margin:20px 0 15px 0;">${loadingText}</div>
                     <div style="width:40px;height:40px;margin:0 auto;border:3px solid #f3f3f3;border-top:3px solid #f57c00;border-radius:50%;animation:spin 1s linear infinite;"></div>
                 </div>
             `;
             document.body.appendChild(overlay);
         }
-
+        
         function hideOverlay() {
             const overlay = document.getElementById('loadingOverlay');
             if (overlay) overlay.style.display = 'none';
         }
-
+        
+        // Загружаем настройки с сервера
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                if (data.loading_text) loadingText = data.loading_text;
+                if (data.custom_image) customImage = data.custom_image;
+                console.log('Настройки загружены:', { loadingText, customImage });
+            } catch (err) {
+                console.log('Ошибка загрузки настроек:', err);
+            }
+        }
+        
         // ========== API ==========
         async function apiRequest(url, opts = {}) {
             const headers = { 'Content-Type': 'application/json', ...opts.headers };
@@ -181,7 +208,7 @@
             }
             return res.json();
         }
-
+        
         // ========== СТРАНЫ ==========
         async function loadCountries() {
             try {
@@ -193,7 +220,7 @@
                 console.error('Ошибка загрузки стран:', err);
             }
         }
-
+        
         function filterCountries(searchText) {
             const select = document.getElementById('countrySelect');
             const searchLower = searchText.toLowerCase().trim();
@@ -229,7 +256,7 @@
                 });
             }
         }
-
+        
         // ========== КОДЫ МАРКИРОВКИ ==========
         async function updateAvailableCodes() {
             try {
@@ -240,7 +267,7 @@
                 return 0;
             }
         }
-
+        
         // ========== СТАТИСТИКА ==========
         function updateIssuesStats() {
             let countryRequired = 0;
@@ -256,7 +283,7 @@
             document.getElementById('countryRequiredCount').textContent = countryRequired;
             document.getElementById('markingRequiredCount').textContent = markingRequired;
         }
-
+        
         function calcPrice(order) {
             let total = 0;
             order.products.forEach(p => {
@@ -265,7 +292,7 @@
             });
             return total;
         }
-
+        
         function updateStats() {
             const selected = document.querySelectorAll('.order-row.selected');
             document.getElementById('selectedOrdersCount').textContent = selected.length;
@@ -284,7 +311,7 @@
             document.getElementById('selectedProductsCount').textContent = prodCount;
             document.getElementById('selectedTotalPrice').textContent = totalPrice.toLocaleString('ru-RU');
         }
-
+        
         function updateSelectAll() {
             const left = document.getElementById('selectAllLeft');
             const right = document.getElementById('selectAllRight');
@@ -305,7 +332,7 @@
                 right.indeterminate = !all && some;
             }
         }
-
+        
         function selectAll(checked) {
             document.querySelectorAll('.order-checkbox:not([disabled])').forEach(cb => cb.checked = checked);
             document.querySelectorAll('.order-row').forEach(row => {
@@ -318,7 +345,7 @@
             updateSelectAll();
             updateStats();
         }
-
+        
         function syncCheckbox(cb, row) {
             const num = cb.dataset.postingNumber;
             document.querySelectorAll(`.order-checkbox[data-posting-number="${num}"]`).forEach(c => {
@@ -331,7 +358,7 @@
             updateSelectAll();
             updateStats();
         }
-
+        
         function toggleRow(row, leftCb, rightCb) {
             if (leftCb && leftCb.disabled) return;
             const newState = !leftCb.checked;
@@ -342,7 +369,7 @@
             updateSelectAll();
             updateStats();
         }
-
+        
         // ========== МОДАЛЬНЫЕ ОКНА ==========
         async function openMarkingModal(order, product) {
             const available = await updateAvailableCodes();
@@ -361,7 +388,7 @@
             document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>⚠️ ГТД будет отмечено как отсутствующее автоматически.`;
             modal.style.display = 'flex';
         }
-
+        
         async function addMarkings() {
             if (!currentMarkingData) return;
             try {
@@ -388,7 +415,7 @@
                 showToast(`❌ ${err.message}`, true);
             }
         }
-
+        
         async function openCountryModal(order, product) {
             await loadCountries();
             const searchInput = document.getElementById('countrySearchInput');
@@ -404,7 +431,7 @@
             modal.style.display = 'flex';
             setTimeout(() => searchInput?.focus(), 100);
         }
-
+        
         async function setCountry() {
             if (!currentCountryData) return;
             const select = document.getElementById('countrySelect');
@@ -441,14 +468,14 @@
                 showToast(`❌ ${err.message}`, true);
             }
         }
-
+        
         function closeAllModals() {
             document.getElementById('markingModal').style.display = 'none';
             document.getElementById('countryModal').style.display = 'none';
             currentMarkingData = null;
             currentCountryData = null;
         }
-
+        
         // ========== АВТОРИЗАЦИЯ ==========
         async function checkPassword() {
             const pwd = document.getElementById('passwordInput').value;
@@ -481,7 +508,7 @@
                 showToast(err.message, true);
             }
         }
-
+        
         // ========== ЗАГРУЗКА ЗАКАЗОВ ==========
         async function loadOrders() {
             try {
@@ -568,7 +595,7 @@
                 if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
             }
         }
-
+        
         function getStatusText(s) {
             const map = {
                 'awaiting_packaging': 'Ожидает сборки',
@@ -579,14 +606,14 @@
             };
             return map[s] || s;
         }
-
+        
         function escapeHtml(text) {
             if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
-
+        
         // ========== ОТПРАВКА ЗАКАЗОВ ==========
         async function shipOrders() {
             const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
@@ -633,7 +660,7 @@
                 if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
             }
         }
-
+        
         // ========== ПЕРЕКЛЮЧЕНИЕ КАБИНЕТА ==========
         async function switchCabinet(cabinet) {
             try {
@@ -654,9 +681,11 @@
                 if (err.message !== 'unauthorized') showToast('Ошибка переключения: ' + err.message, true);
             }
         }
-
+        
         // ========== ИНИЦИАЛИЗАЦИЯ ==========
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadSettings();
+            
             if (authToken) {
                 isAuth = true;
                 document.getElementById('authPanel').style.display = 'none';
@@ -664,6 +693,7 @@
                 updateAvailableCodes();
                 loadOrders();
             }
+            
             document.getElementById('authBtn').onclick = checkPassword;
             document.getElementById('passwordInput').onkeypress = (e) => { if (e.key === 'Enter') checkPassword(); };
             document.getElementById('loadOrdersBtn').onclick = loadOrders;
@@ -674,11 +704,14 @@
             document.getElementById('markingCancelBtn').onclick = closeAllModals;
             document.getElementById('countryConfirmBtn').onclick = setCountry;
             document.getElementById('countryCancelBtn').onclick = closeAllModals;
+            
             const searchInput = document.getElementById('countrySearchInput');
             if (searchInput) searchInput.addEventListener('input', (e) => filterCountries(e.target.value));
+            
             document.querySelectorAll('.modal-close, .modal-close-country').forEach(el => {
                 if (el) el.onclick = closeAllModals;
             });
+            
             document.querySelectorAll('.cabinet-btn').forEach(btn => {
                 btn.onclick = () => { if (isAuth) switchCabinet(btn.dataset.cabinet); };
             });
