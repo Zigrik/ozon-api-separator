@@ -32,8 +32,8 @@
 
                 <div class="stats-row">
                     <div class="stats-panel" id="statsPanel">
-                        <span>📊 Выделено: <strong id="selectedOrdersCount">0</strong> заказов</span>
-                        <span>📦 Товаров: <strong id="selectedProductsCount">0</strong></span>
+                        <span>📊 Выделено (всего): <strong id="selectedOrdersCount">0</strong>(<strong id="totalOrdersCount">0</strong>) заказов</span>
+                        <span>📦 Товаров: <strong id="selectedProductsCount">0</strong>(<strong id="totalProductsCount">0</strong>)</span>
                         <span>💰 Сумма: <strong id="selectedTotalPrice">0</strong> ₽</span>
                     </div>
                     <div class="stats-panel issues-panel" id="issuesPanel">
@@ -64,6 +64,33 @@
                                 </tr>
                             </thead>
                             <tbody id="ordersList"></tbody>
+                            <div class="table-wrapper">
+                                <table class="orders-table" id="ordersTable">
+                                    <thead>
+                                        <tr>
+                                            <th class="checkbox-cell"><input type="checkbox" id="selectAllLeft"></th>
+                                            <th>Номер заказа</th>
+                                            <th class="status-cell">Статус</th>
+                                            <th>Товары</th>
+                                            <th class="quantity-header">Кол-во</th>
+                                            <th class="price-cell">Сумма</th>
+                                            <th class="checkbox-cell"><input type="checkbox" id="selectAllRight"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ordersList"></tbody>
+                                    <tfoot id="ordersFooter" style="background-color: #f8f9fa; font-weight: bold;">
+                                        <tr>
+                                            <td colspan="7" style="padding: 8px 16px;">
+                                                <div class="stats-panel" style="margin: 0; gap: 24px; justify-content: flex-start; background: transparent; padding: 0;">
+                                                    <span>📊 Выделено (всего): <strong id="footerSelectedOrders">0</strong>(<strong id="footerTotalOrders">0</strong>) заказов</span>
+                                                    <span>📦 Товаров: <strong id="footerSelectedProducts">0</strong>(<strong id="footerTotalProducts">0</strong>)</span>
+                                                    <span>💰 Сумма: <strong id="footerSelectedPrice">0</strong> ₽</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
                         </table>
                     </div>
                     <div class="action-buttons-bottom">
@@ -117,7 +144,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.4.3</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.4.4</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -295,65 +322,115 @@
         
         function updateStats() {
             const selected = document.querySelectorAll('.order-row.selected');
-            document.getElementById('selectedOrdersCount').textContent = selected.length;
-            let prodCount = 0, totalPrice = 0;
+            const allRows = document.querySelectorAll('.order-row');
+            
+            // Подсчёт выделенных
+            let selectedOrdersCount = selected.length;
+            let selectedProductsCount = 0;
+            let selectedTotalPrice = 0;
+            
+            // Подсчёт всех
+            let totalProductsCount = 0;
+            let totalPrice = 0;
+            
             selected.forEach(row => {
                 const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
                 if (order) {
                     order.products.forEach(p => {
                         if (!p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required) {
-                            prodCount += p.quantity;
-                            totalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
+                            selectedProductsCount += p.quantity;
+                            selectedTotalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
                         }
                     });
                 }
             });
-            document.getElementById('selectedProductsCount').textContent = prodCount;
-            document.getElementById('selectedTotalPrice').textContent = totalPrice.toLocaleString('ru-RU');
+            
+            allRows.forEach(row => {
+                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+                if (order) {
+                    order.products.forEach(p => {
+                        totalProductsCount += p.quantity;
+                        totalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
+                    });
+                }
+            });
+            
+            // Обновляем титул
+            document.getElementById('selectedOrdersCount').textContent = selectedOrdersCount;
+            document.getElementById('totalOrdersCount').textContent = allRows.length;
+            document.getElementById('selectedProductsCount').textContent = selectedProductsCount;
+            document.getElementById('totalProductsCount').textContent = totalProductsCount;
+            document.getElementById('selectedTotalPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
+            
+            // Обновляем футер таблицы
+            document.getElementById('footerSelectedOrders').textContent = selectedOrdersCount;
+            document.getElementById('footerTotalOrders').textContent = allRows.length;
+            document.getElementById('footerSelectedProducts').textContent = selectedProductsCount;
+            document.getElementById('footerTotalProducts').textContent = totalProductsCount;
+            document.getElementById('footerSelectedPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
         }
         
         function updateSelectAll() {
             const left = document.getElementById('selectAllLeft');
             const right = document.getElementById('selectAllRight');
             const cbs = document.querySelectorAll('.order-checkbox:not([disabled])');
+            
             if (cbs.length === 0) {
-                if (left) left.checked = false;
-                if (right) right.checked = false;
+                if (left) {
+                    left.checked = false;
+                    left.indeterminate = false;
+                }
+                if (right) {
+                    right.checked = false;
+                    right.indeterminate = false;
+                }
                 return;
             }
-            const all = Array.from(cbs).every(cb => cb.checked);
-            const some = Array.from(cbs).some(cb => cb.checked);
+            
+            const allChecked = Array.from(cbs).every(cb => cb.checked);
+            const someChecked = Array.from(cbs).some(cb => cb.checked);
+            
             if (left) {
-                left.checked = all;
-                left.indeterminate = !all && some;
+                left.checked = allChecked;
+                left.indeterminate = !allChecked && someChecked;
             }
             if (right) {
-                right.checked = all;
-                right.indeterminate = !all && some;
+                right.checked = allChecked;
+                right.indeterminate = !allChecked && someChecked;
             }
         }
         
         function selectAll(checked) {
-            document.querySelectorAll('.order-checkbox:not([disabled])').forEach(cb => cb.checked = checked);
+            const checkboxes = document.querySelectorAll('.order-checkbox:not([disabled])');
+            checkboxes.forEach(cb => cb.checked = checked);
+            
             document.querySelectorAll('.order-row').forEach(row => {
                 const cb = row.querySelector('td:first-child .order-checkbox');
                 if (cb && !cb.disabled) {
-                    if (checked) row.classList.add('selected');
-                    else row.classList.remove('selected');
+                    if (checked) {
+                        row.classList.add('selected');
+                    } else {
+                        row.classList.remove('selected');
+                    }
                 }
             });
+            
             updateSelectAll();
             updateStats();
         }
         
         function syncCheckbox(cb, row) {
             const num = cb.dataset.postingNumber;
-            document.querySelectorAll(`.order-checkbox[data-posting-number="${num}"]`).forEach(c => {
+            const allCheckboxes = document.querySelectorAll(`.order-checkbox[data-posting-number="${num}"]`);
+            allCheckboxes.forEach(c => {
                 if (c !== cb) c.checked = cb.checked;
             });
             if (row && !cb.disabled) {
-                if (cb.checked) row.classList.add('selected');
-                else row.classList.remove('selected');
+                if (cb.checked) {
+                    row.classList.add('selected');
+                } else {
+                    row.classList.remove('selected');
+                }
             }
             updateSelectAll();
             updateStats();
@@ -364,8 +441,11 @@
             const newState = !leftCb.checked;
             leftCb.checked = newState;
             if (rightCb) rightCb.checked = newState;
-            if (newState) row.classList.add('selected');
-            else row.classList.remove('selected');
+            if (newState) {
+                row.classList.add('selected');
+            } else {
+                row.classList.remove('selected');
+            }
             updateSelectAll();
             updateStats();
         }
