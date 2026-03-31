@@ -1077,6 +1077,7 @@ func main() {
 	http.HandleFunc("/api/countries/list", authMiddleware(handleGetCountries))
 	http.HandleFunc("/api/countries/set", authMiddleware(handleSetCountry))
 	http.HandleFunc("/api/settings", handleGetSettings)
+	http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "static/favicon.ico") })
 
 	port := os.Getenv("PORT")
 	if port == "" {
