@@ -51,12 +51,12 @@
                 
                 <div id="ordersContainer" style="display:none;">
                     <div class="table-wrapper">
-                        <table class="orders-table">
+                        <table class="orders-table" id="ordersTable">
                             <thead>
                                 <tr>
                                     <th class="checkbox-cell"><input type="checkbox" id="selectAllLeft"></th>
                                     <th>Номер заказа</th>
-                                    <th>Статус</th>
+                                    <th class="status-cell">Статус</th>
                                     <th>Товары</th>
                                     <th class="quantity-header">Кол-во</th>
                                     <th class="price-cell">Сумма</th>
@@ -64,33 +64,19 @@
                                 </tr>
                             </thead>
                             <tbody id="ordersList"></tbody>
-                            <div class="table-wrapper">
-                                <table class="orders-table" id="ordersTable">
-                                    <thead>
-                                        <tr>
-                                            <th class="checkbox-cell"><input type="checkbox" id="selectAllLeft"></th>
-                                            <th>Номер заказа</th>
-                                            <th class="status-cell">Статус</th>
-                                            <th>Товары</th>
-                                            <th class="quantity-header">Кол-во</th>
-                                            <th class="price-cell">Сумма</th>
-                                            <th class="checkbox-cell"><input type="checkbox" id="selectAllRight"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="ordersList"></tbody>
-                                    <tfoot id="ordersFooter" style="background-color: #f8f9fa; font-weight: bold;">
-                                        <tr>
-                                            <td colspan="7" style="padding: 8px 16px;">
-                                                <div class="stats-panel" style="margin: 0; gap: 24px; justify-content: flex-start; background: transparent; padding: 0;">
-                                                    <span>📊 Выделено (всего): <strong id="footerSelectedOrders">0</strong>(<strong id="footerTotalOrders">0</strong>) заказов</span>
-                                                    <span>📦 Товаров: <strong id="footerSelectedProducts">0</strong>(<strong id="footerTotalProducts">0</strong>)</span>
-                                                    <span>💰 Сумма: <strong id="footerSelectedPrice">0</strong> ₽</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
+                            <tfoot id="ordersFooter">
+                                <tr>
+                                    <td class="checkbox-cell"></td>
+                                    <td colspan="5" style="text-align: left; padding: 8px;">
+                                        <div class="stats-panel" style="margin: 0; gap: 24px; background: transparent; padding: 0;">
+                                            <span>📊 Выделено (всего): <strong id="footerSelectedOrders">0</strong>(<strong id="footerTotalOrders">0</strong>) заказов</span>
+                                            <span>📦 Товаров: <strong id="footerSelectedProducts">0</strong>(<strong id="footerTotalProducts">0</strong>)</span>
+                                            <span>💰 Сумма: <strong id="footerSelectedPrice">0</strong> ₽</span>
+                                        </div>
+                                    </td>
+                                    <td class="checkbox-cell"></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                     <div class="action-buttons-bottom">
@@ -144,7 +130,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.4.4</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.4.5 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -169,7 +155,6 @@
             setTimeout(() => toast.className = 'toast', 3000);
         }
         
-        // Функция для показа оверлея
         function showOverlay() {
             let overlay = document.getElementById('loadingOverlay');
             if (overlay) {
@@ -180,7 +165,6 @@
             overlay.id = 'loadingOverlay';
             overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:9999;backdrop-filter:blur(3px);';
             
-            // Определяем, что показывать: картинку или эмодзи
             let imageHtml = '';
             if (customImage) {
                 imageHtml = `<img src="/static/images/${customImage}" style="width:80px;height:80px;object-fit:contain;animation:bounce 1s infinite ease-in-out;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'font-size:64px;animation:bounce 1s infinite ease-in-out;\'>🐴</div>';">`;
@@ -203,7 +187,6 @@
             if (overlay) overlay.style.display = 'none';
         }
         
-        // Загружаем настройки с сервера
         async function loadSettings() {
             try {
                 const res = await fetch('/api/settings');
@@ -324,12 +307,9 @@
             const selected = document.querySelectorAll('.order-row.selected');
             const allRows = document.querySelectorAll('.order-row');
             
-            // Подсчёт выделенных
             let selectedOrdersCount = selected.length;
             let selectedProductsCount = 0;
             let selectedTotalPrice = 0;
-            
-            // Подсчёт всех
             let totalProductsCount = 0;
             let totalPrice = 0;
             
@@ -362,7 +342,7 @@
             document.getElementById('totalProductsCount').textContent = totalProductsCount;
             document.getElementById('selectedTotalPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
             
-            // Обновляем футер таблицы
+            // Обновляем футер
             document.getElementById('footerSelectedOrders').textContent = selectedOrdersCount;
             document.getElementById('footerTotalOrders').textContent = allRows.length;
             document.getElementById('footerSelectedProducts').textContent = selectedProductsCount;
@@ -373,31 +353,26 @@
         function updateSelectAll() {
             const left = document.getElementById('selectAllLeft');
             const right = document.getElementById('selectAllRight');
+            
+            if (!left || !right) return;
+            
             const cbs = document.querySelectorAll('.order-checkbox:not([disabled])');
             
             if (cbs.length === 0) {
-                if (left) {
-                    left.checked = false;
-                    left.indeterminate = false;
-                }
-                if (right) {
-                    right.checked = false;
-                    right.indeterminate = false;
-                }
+                left.checked = false;
+                left.indeterminate = false;
+                right.checked = false;
+                right.indeterminate = false;
                 return;
             }
             
             const allChecked = Array.from(cbs).every(cb => cb.checked);
             const someChecked = Array.from(cbs).some(cb => cb.checked);
             
-            if (left) {
-                left.checked = allChecked;
-                left.indeterminate = !allChecked && someChecked;
-            }
-            if (right) {
-                right.checked = allChecked;
-                right.indeterminate = !allChecked && someChecked;
-            }
+            left.checked = allChecked;
+            left.indeterminate = !allChecked && someChecked;
+            right.checked = allChecked;
+            right.indeterminate = !allChecked && someChecked;
         }
         
         function selectAll(checked) {
@@ -636,16 +611,24 @@
                     }).join('');
                 }
                 document.getElementById('ordersContainer').style.display = 'block';
+                
+                // Обработчики строк
                 document.querySelectorAll('.order-row').forEach(row => {
                     const leftCb = row.querySelector('td:first-child .order-checkbox');
                     const rightCb = row.querySelector('td:last-child .order-checkbox');
-                    if (leftCb) leftCb.addEventListener('change', (e) => { e.stopPropagation(); syncCheckbox(leftCb, row); });
-                    if (rightCb) rightCb.addEventListener('change', (e) => { e.stopPropagation(); syncCheckbox(rightCb, row); });
+                    if (leftCb) {
+                        leftCb.addEventListener('change', (e) => { e.stopPropagation(); syncCheckbox(leftCb, row); });
+                    }
+                    if (rightCb) {
+                        rightCb.addEventListener('change', (e) => { e.stopPropagation(); syncCheckbox(rightCb, row); });
+                    }
                     row.addEventListener('click', (e) => {
                         if (e.target.type === 'checkbox' || e.target.classList.contains('clickable')) return;
                         toggleRow(row, leftCb, rightCb);
                     });
                 });
+                
+                // Обработчики клика по предупреждениям
                 document.querySelectorAll('.clickable').forEach(el => {
                     el.addEventListener('click', async (e) => {
                         e.stopPropagation();
@@ -662,10 +645,21 @@
                         }
                     });
                 });
+                
+                // Привязка чекбоксов "выбрать все"
                 const leftAll = document.getElementById('selectAllLeft');
                 const rightAll = document.getElementById('selectAllRight');
-                if (leftAll) leftAll.onchange = () => selectAll(leftAll.checked);
-                if (rightAll) rightAll.onchange = () => selectAll(rightAll.checked);
+                if (leftAll) {
+                    const newLeft = leftAll.cloneNode(true);
+                    leftAll.parentNode.replaceChild(newLeft, leftAll);
+                    newLeft.onchange = () => selectAll(newLeft.checked);
+                }
+                if (rightAll) {
+                    const newRight = rightAll.cloneNode(true);
+                    rightAll.parentNode.replaceChild(newRight, rightAll);
+                    newRight.onchange = () => selectAll(newRight.checked);
+                }
+                
                 updateSelectAll();
                 updateStats();
                 updateIssuesStats();

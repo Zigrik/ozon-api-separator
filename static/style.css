@@ -427,9 +427,30 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
 }
 
 .orders-table tfoot td {
-    padding: 12px 8px;
+    padding: 8px;
     border-top: 2px solid #e0e0e0;
     background-color: #f8f9fa;
+    vertical-align: middle;
+}
+
+.orders-table tfoot td.checkbox-cell {
+    width: 36px;
+    text-align: center;
+}
+
+.orders-table tfoot td.quantity-cell,
+.orders-table tfoot td.price-cell {
+    text-align: center;
+}
+
+.orders-table tfoot .stats-panel span {
+    font-size: 14px;
+    color: #666;
+}
+
+.orders-table tfoot .stats-panel strong {
+    font-size: 15px;
+    color: #333;
 }
 
 .orders-table tfoot span {
@@ -443,16 +464,6 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
 
 .orders-table tfoot td:first-child {
     text-align: right;
-}
-
-.orders-table tfoot .stats-panel span {
-    font-size: 14px;
-    color: #666;
-}
-
-.orders-table tfoot .stats-panel strong {
-    font-size: 15px;
-    color: #333;
 }
 
 .app-footer .version { font-weight: 600; color: #333; font-family: monospace; }
