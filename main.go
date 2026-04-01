@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Zigrik/license-system/license"
 	"github.com/joho/godotenv"
 )
 
@@ -1039,39 +1040,35 @@ func handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+const decryptKey = "vGlxAZOhrJY+VjopJqaSQAc4e8zW9qAj2G5coWmQ3X4="
+
 var currentCompany string
 
 func main() {
-	// Вызываем функцию проверки лицензии
-	// Параметры:
-	//   1. путь к decrypt.key
-	//   2. путь к license.key
-	//   3. ожидаемое название продукта (у вас "700")
-	//   4. ключ в .env для компании (если нужно проверять)
-	result := CheckProgramLicense(
-		"decrypt.key", // файл с ключом дешифрования
-		"license.key", // файл с лицензией
-		"700",         // название продукта
-		"APP_COMPANY", // ключ в .env для компании (если не нужно - передайте "")
+	// Проверяем лицензию
+	// Первый параметр — встроенный ключ (строка)
+	// Второй — путь к файлу лицензии
+	// Третий — название продукта
+	result := license.CheckLicense(
+		decryptKey,         // ← ключ зашит в коде
+		"license.key",      // файл с лицензией
+		"OZON Api Cabinet", // название продукта
 	)
 
-	// Проверяем результат
-	if !result.Success {
-		// Лицензия не валидна - завершаем программу
+	if !result.Valid {
 		log.Fatalf("\n"+
 			"═══════════════════════════════════════════════════\n"+
+			"❌ ОШИБКА ЛИЦЕНЗИИ\n"+
 			"%s\n"+
 			"═══════════════════════════════════════════════════\n"+
-			"📞 Обратитесь к администратору для получения лицензии\n",
-			result.Message)
+			"📞 Обратитесь к администратору\n",
+			result.Error)
 	}
 
-	// Лицензия валидна - сохраняем компанию и выводим информацию
 	currentCompany = result.Company
-	log.Println(result.Message)
-	log.Printf("🚀 Запуск программы для компании: %s", currentCompany)
+	log.Printf("✅ Лицензия активна. Компания: %s", currentCompany)
 
-	// Здесь идет ваша основная программа
+	// Ваш код здесь
 	runApp()
 }
 
