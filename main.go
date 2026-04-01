@@ -1006,15 +1006,6 @@ func getLocalIP() string {
 	return "localhost"
 }
 
-func checkExpiration() {
-	expirationDate := time.Date(2026, time.April, 8, 0, 0, 0, 0, time.Local)
-	now := time.Now()
-
-	if now.After(expirationDate) {
-		log.Fatal("⛔ Ошибка вызова методов OZON. Обратитесь к администратору")
-	}
-}
-
 // API: получение настроек из .env
 func handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1048,8 +1039,43 @@ func handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+var currentCompany string
+
 func main() {
-	checkExpiration()
+	// Вызываем функцию проверки лицензии
+	// Параметры:
+	//   1. путь к decrypt.key
+	//   2. путь к license.key
+	//   3. ожидаемое название продукта (у вас "700")
+	//   4. ключ в .env для компании (если нужно проверять)
+	result := CheckProgramLicense(
+		"decrypt.key", // файл с ключом дешифрования
+		"license.key", // файл с лицензией
+		"700",         // название продукта
+		"APP_COMPANY", // ключ в .env для компании (если не нужно - передайте "")
+	)
+
+	// Проверяем результат
+	if !result.Success {
+		// Лицензия не валидна - завершаем программу
+		log.Fatalf("\n"+
+			"═══════════════════════════════════════════════════\n"+
+			"%s\n"+
+			"═══════════════════════════════════════════════════\n"+
+			"📞 Обратитесь к администратору для получения лицензии\n",
+			result.Message)
+	}
+
+	// Лицензия валидна - сохраняем компанию и выводим информацию
+	currentCompany = result.Company
+	log.Println(result.Message)
+	log.Printf("🚀 Запуск программы для компании: %s", currentCompany)
+
+	// Здесь идет ваша основная программа
+	runApp()
+}
+
+func runApp() {
 
 	if err := loadConfig(); err != nil {
 		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
