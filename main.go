@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -186,6 +188,26 @@ type ExemplarStatusResponse struct {
 		} `json:"exemplars"`
 	} `json:"products"`
 }
+
+type LabelRequest struct {
+	PostingNumbers []string `json:"posting_number"`
+}
+
+type LabelResponse struct {
+	ContentType string `json:"content_type"`
+	FileName    string `json:"file_name"`
+	FileContent string `json:"file_content"` // base64 encoded PDF
+}
+
+// Глобальная очередь для этикеток
+var labelQueue = struct {
+	sync.Mutex
+	Jobs      map[string][]string // postingNumber -> список идентификаторов отправлений
+	Status    map[string]string   // статус: pending, processing, completed, error
+	Progress  map[string]int      // текущий прогресс
+	Total     map[string]int      // всего
+	StartTime map[string]time.Time
+}{}
 
 var appConfig *AppConfig
 var markingCodes []string
@@ -1040,6 +1062,160 @@ func handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func getPackageLabels(cabinet *CabinetConfig, postingNumbers []string) (*LabelResponse, error) {
+	url := "https://api-seller.ozon.ru/v2/posting/fbs/package-label"
+
+	request := LabelRequest{
+		PostingNumbers: postingNumbers,
+	}
+
+	respBody, err := makeOzonRequest(cabinet, "POST", url, request)
+	if err != nil {
+		return nil, err
+	}
+
+	var response LabelResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, err
+	}
+
+	return &response, nil
+}
+
+func saveLabelToFile(basePath, folderName, fileName, base64Content string) error {
+	// Создаем папку, если её нет
+	fullPath := filepath.Join(basePath, folderName)
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		return err
+	}
+
+	// Декодируем base64
+	content, err := base64.StdEncoding.DecodeString(base64Content)
+	if err != nil {
+		return err
+	}
+
+	// Сохраняем файл
+	filePath := filepath.Join(fullPath, fileName)
+	return os.WriteFile(filePath, content, 0644)
+}
+
+func handleStartLabelGeneration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		PostingNumbers []string `json:"posting_numbers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Сохраняем задачу в очередь
+	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
+	labelQueue.Lock()
+	labelQueue.Jobs[jobID] = req.PostingNumbers
+	labelQueue.Status[jobID] = "pending"
+	labelQueue.Progress[jobID] = 0
+	labelQueue.Total[jobID] = len(req.PostingNumbers)
+	labelQueue.StartTime[jobID] = time.Now()
+	labelQueue.Unlock()
+
+	// Запускаем фоновую обработку
+	go processLabelJob(jobID)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"job_id": jobID,
+	})
+}
+
+func processLabelJob(jobID string) {
+	// Ждем 60 секунд перед началом
+	time.Sleep(60 * time.Second)
+
+	labelQueue.Lock()
+	postingNumbers := labelQueue.Jobs[jobID]
+	labelQueue.Status[jobID] = "processing"
+	labelQueue.Unlock()
+
+	cabinet := getActiveConfig()
+	labelsPath := os.Getenv("LABELS_PATH")
+	if labelsPath == "" {
+		labelsPath = "labels"
+	}
+
+	for i, postingNumber := range postingNumbers {
+		// Ждем 2 секунды между запросами
+		if i > 0 {
+			time.Sleep(2 * time.Second)
+		}
+
+		// Получаем этикетку
+		label, err := getPackageLabels(cabinet, []string{postingNumber})
+		if err != nil {
+			log.Printf("Ошибка получения этикетки для %s: %v", postingNumber, err)
+			continue
+		}
+
+		// Извлекаем имя папки (часть до последнего дефиса)
+		parts := strings.Split(postingNumber, "-")
+		folderName := strings.Join(parts[:len(parts)-1], "-")
+
+		// Сохраняем файл
+		err = saveLabelToFile(labelsPath, folderName, label.FileName, label.FileContent)
+		if err != nil {
+			log.Printf("Ошибка сохранения этикетки для %s: %v", postingNumber, err)
+		}
+
+		labelQueue.Lock()
+		labelQueue.Progress[jobID] = i + 1
+		labelQueue.Unlock()
+	}
+
+	labelQueue.Lock()
+	labelQueue.Status[jobID] = "completed"
+	labelQueue.Unlock()
+}
+
+func handleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	jobID := r.URL.Query().Get("job_id")
+	if jobID == "" {
+		http.Error(w, "job_id required", http.StatusBadRequest)
+		return
+	}
+
+	labelQueue.Lock()
+	defer labelQueue.Unlock()
+
+	status := labelQueue.Status[jobID]
+	progress := labelQueue.Progress[jobID]
+	total := labelQueue.Total[jobID]
+	startTime := labelQueue.StartTime[jobID]
+
+	elapsed := time.Since(startTime).Seconds()
+	timeToStart := 0.0
+	if elapsed < 60 {
+		timeToStart = 60 - elapsed
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        status,
+		"progress":      progress,
+		"total":         total,
+		"time_to_start": timeToStart,
+		"elapsed":       elapsed,
+	})
+}
+
 const decryptKey = "vGlxAZOhrJY+VjopJqaSQAc4e8zW9qAj2G5coWmQ3X4="
 
 var currentCompany string
@@ -1100,6 +1276,8 @@ func runApp() {
 	http.HandleFunc("/api/countries/list", authMiddleware(handleGetCountries))
 	http.HandleFunc("/api/countries/set", authMiddleware(handleSetCountry))
 	http.HandleFunc("/api/settings", handleGetSettings)
+	http.HandleFunc("/api/labels/generate", authMiddleware(handleStartLabelGeneration))
+	http.HandleFunc("/api/labels/status", authMiddleware(handleGetLabelStatus))
 	http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "static/favicon.ico") })
 
 	port := os.Getenv("PORT")

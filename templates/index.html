@@ -25,6 +25,10 @@
                     <button class="cabinet-btn" data-cabinet="trecktrack">TreckTrack</button>
                     <button class="cabinet-btn" data-cabinet="sevenhundredshin">700shin</button>
                 </div>
+                <div id="labelStatus" class="label-status" style="display:none;">
+                    <span id="labelStatusText"></span>
+                    <span id="labelProgress"></span>
+                </div>
             </div>
 
             <div class="content">
@@ -47,7 +51,8 @@
                 <div class="action-bar">
                     <div class="action-buttons">
                         <button id="loadOrdersBtn" class="primary-btn">📦 Загрузить заказы</button>
-                        <button id="shipOrdersBtn" class="split-btn">🚀 Разделить и отправить</button>
+                        <button id="splitOrdersBtn" class="split-btn">✂️ Разделить заказы</button>
+                        <button id="generateLabelsBtn" class="label-btn">🏷️ Разделить и скачать марки</button>
                     </div>
                 </div>
                 
@@ -83,7 +88,8 @@
                     </div>
                     <div class="action-buttons-bottom">
                         <button id="loadOrdersBtnBottom" class="primary-btn">📦 Загрузить заказы</button>
-                        <button id="shipOrdersBtnBottom" class="split-btn">🚀 Разделить и отправить</button>
+                        <button id="splitOrdersBtnBottom" class="split-btn">✂️ Разделить заказы</button>
+                        <button id="generateLabelsBtnBottom" class="label-btn">🏷️ Разделить и скачать марки</button>
                     </div>
                 </div>
             </div>
@@ -132,7 +138,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.5.0 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.6.0 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -337,14 +343,12 @@
                 }
             });
             
-            // Обновляем титул
             document.getElementById('selectedOrdersCount').textContent = selectedOrdersCount;
             document.getElementById('totalOrdersCount').textContent = allRows.length;
             document.getElementById('selectedProductsCount').textContent = selectedProductsCount;
             document.getElementById('totalProductsCount').textContent = totalProductsCount;
             document.getElementById('selectedTotalPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
             
-            // Обновляем футер
             document.getElementById('footerSelectedOrders').textContent = selectedOrdersCount;
             document.getElementById('footerTotalOrders').textContent = allRows.length;
             document.getElementById('footerSelectedProducts').textContent = selectedProductsCount;
@@ -614,7 +618,6 @@
                 }
                 document.getElementById('ordersContainer').style.display = 'block';
                 
-                // Обработчики строк
                 document.querySelectorAll('.order-row').forEach(row => {
                     const leftCb = row.querySelector('td:first-child .order-checkbox');
                     const rightCb = row.querySelector('td:last-child .order-checkbox');
@@ -630,7 +633,6 @@
                     });
                 });
                 
-                // Обработчики клика по предупреждениям
                 document.querySelectorAll('.clickable').forEach(el => {
                     el.addEventListener('click', async (e) => {
                         e.stopPropagation();
@@ -648,7 +650,6 @@
                     });
                 });
                 
-                // Привязка чекбоксов "выбрать все"
                 const leftAll = document.getElementById('selectAllLeft');
                 const rightAll = document.getElementById('selectAllRight');
                 if (leftAll) {
@@ -691,7 +692,7 @@
         }
         
         // ========== ОТПРАВКА ЗАКАЗОВ ==========
-        async function shipOrders() {
+        async function splitOrders() {
             const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
             if (cbs.length === 0) {
                 showToast('Выберите заказы', true);
@@ -737,6 +738,108 @@
             }
         }
         
+        // ========== РАЗДЕЛЕНИЕ И СКАЧИВАНИЕ МАРОК ==========
+        async function generateAndDownloadLabels() {
+            const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
+            if (cbs.length === 0) {
+                showToast('Выберите заказы', true);
+                return;
+            }
+            
+            const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
+            
+            // Сначала разделяем заказы
+            showOverlay();
+            try {
+                const toShip = [];
+                for (const num of numbers) {
+                    const order = orders.find(o => o.posting_number === num);
+                    if (order && order.status === 'awaiting_packaging') {
+                        const valid = order.products.filter(p => !p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required);
+                        if (valid.length) {
+                            toShip.push({
+                                posting_number: num,
+                                products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
+                            });
+                        }
+                    }
+                }
+                
+                if (toShip.length === 0) {
+                    hideOverlay();
+                    showToast('Нет заказов для отправки', true);
+                    return;
+                }
+                
+                const shipData = await apiRequest('/api/orders/ship', {
+                    method: 'POST',
+                    body: JSON.stringify({ orders: toShip })
+                });
+                
+                let ok = 0, err = 0;
+                shipData.results.forEach(r => {
+                    if (r.status === 'success') ok++;
+                    else err++;
+                });
+                
+                if (ok === 0) {
+                    hideOverlay();
+                    showToast('Ошибка при разделении заказов', true);
+                    return;
+                }
+                
+                // Запускаем генерацию этикеток
+                const labelData = await apiRequest('/api/labels/generate', {
+                    method: 'POST',
+                    body: JSON.stringify({ posting_numbers: numbers })
+                });
+                
+                const jobId = labelData.job_id;
+                showLabelStatus(jobId);
+                
+            } catch (err) {
+                hideOverlay();
+                showToast('Ошибка: ' + err.message, true);
+            }
+        }
+        
+        async function showLabelStatus(jobId) {
+            const statusDiv = document.getElementById('labelStatus');
+            const statusText = document.getElementById('labelStatusText');
+            const progressSpan = document.getElementById('labelProgress');
+            
+            statusDiv.style.display = 'flex';
+            
+            const interval = setInterval(async () => {
+                try {
+                    const data = await apiRequest(`/api/labels/status?job_id=${jobId}`);
+                    
+                    if (data.time_to_start > 0) {
+                        statusText.textContent = `⏳ Ожидание начала (${Math.ceil(data.time_to_start)} сек)`;
+                        progressSpan.textContent = `${data.progress}/${data.total}`;
+                    } else if (data.status === 'processing') {
+                        statusText.textContent = `🏷️ Генерация этикеток...`;
+                        progressSpan.textContent = `${data.progress}/${data.total}`;
+                    } else if (data.status === 'completed') {
+                        clearInterval(interval);
+                        statusText.textContent = `✅ Этикетки сохранены!`;
+                        progressSpan.textContent = `${data.total}/${data.total}`;
+                        setTimeout(() => {
+                            statusDiv.style.display = 'none';
+                        }, 5000);
+                        hideOverlay();
+                        await loadOrders();
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        statusText.textContent = `❌ Ошибка при генерации`;
+                        hideOverlay();
+                    }
+                } catch (err) {
+                    console.error('Status check error:', err);
+                }
+            }, 2000);
+        }
+        
         // ========== ПЕРЕКЛЮЧЕНИЕ КАБИНЕТА ==========
         async function switchCabinet(cabinet) {
             try {
@@ -774,8 +877,10 @@
             document.getElementById('passwordInput').onkeypress = (e) => { if (e.key === 'Enter') checkPassword(); };
             document.getElementById('loadOrdersBtn').onclick = loadOrders;
             document.getElementById('loadOrdersBtnBottom').onclick = loadOrders;
-            document.getElementById('shipOrdersBtn').onclick = shipOrders;
-            document.getElementById('shipOrdersBtnBottom').onclick = shipOrders;
+            document.getElementById('splitOrdersBtn').onclick = splitOrders;
+            document.getElementById('splitOrdersBtnBottom').onclick = splitOrders;
+            document.getElementById('generateLabelsBtn').onclick = generateAndDownloadLabels;
+            document.getElementById('generateLabelsBtnBottom').onclick = generateAndDownloadLabels;
             document.getElementById('markingConfirmBtn').onclick = addMarkings;
             document.getElementById('markingCancelBtn').onclick = closeAllModals;
             document.getElementById('countryConfirmBtn').onclick = setCountry;

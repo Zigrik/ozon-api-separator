@@ -512,3 +512,51 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     .price-cell { font-size: 18px; }
     .status-badge { font-size: 14px; padding: 5px 12px; }
 }
+
+/* Кнопка для генерации этикеток */
+.label-btn {
+    background-color: #ffc107;
+    color: #333;
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.label-btn:hover {
+    background-color: #e0a800;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    color: #fff;
+}
+
+/* Стили для индикатора статуса этикеток */
+.label-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background-color: #f8f9fa;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    border-left: 3px solid #ffc107;
+}
+
+.label-status span:first-child {
+    color: #333;
+    font-weight: 500;
+}
+
+.label-status span:last-child {
+    background-color: #ffc107;
+    padding: 2px 8px;
+    border-radius: 20px;
+    color: #333;
+    font-weight: 600;
+}
