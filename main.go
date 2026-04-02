@@ -717,6 +717,75 @@ func handleSwitchCabinet(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "active": req.Cabinet})
 }
 
+func getOrderShipments(cabinet *CabinetConfig, originalPostingNumber string) ([]string, error) {
+	// Ждём 2 секунды, чтобы подзаказы появились в системе
+	time.Sleep(2 * time.Second)
+
+	url := "https://api-seller.ozon.ru/v3/posting/fbs/unfulfilled/list"
+	now := time.Now()
+	cutoffFrom := now.AddDate(0, 0, -1)
+	cutoffTo := now.AddDate(0, 0, 7)
+
+	filter := PostingsFilter{
+		Limit:  200,
+		Offset: 0,
+	}
+	filter.Filter.CutoffFrom = &cutoffFrom
+	filter.Filter.CutoffTo = &cutoffTo
+
+	respBody, err := makeOzonRequest(cabinet, "POST", url, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		Result struct {
+			Postings []struct {
+				PostingNumber       string `json:"posting_number"`
+				ParentPostingNumber string `json:"parent_posting_number"`
+			} `json:"postings"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, err
+	}
+
+	var shipments []string
+	for _, p := range response.Result.Postings {
+		if p.ParentPostingNumber == originalPostingNumber {
+			shipments = append(shipments, p.PostingNumber)
+		}
+	}
+
+	return shipments, nil
+}
+
+func handleGetOrderShipments(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	postingNumber := r.URL.Query().Get("posting_number")
+	if postingNumber == "" {
+		http.Error(w, "posting_number required", http.StatusBadRequest)
+		return
+	}
+
+	cabinet := getActiveConfig()
+	shipments, err := getOrderShipments(cabinet, postingNumber)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "ok",
+		"shipments": shipments,
+	})
+}
+
 func handleGetOrders(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1383,6 +1452,7 @@ func runApp() {
 	http.HandleFunc("/api/settings", handleGetSettings)
 	http.HandleFunc("/api/labels/generate", authMiddleware(handleStartLabelGeneration))
 	http.HandleFunc("/api/labels/status", authMiddleware(handleGetLabelStatus))
+	http.HandleFunc("/api/orders/shipments", authMiddleware(handleGetOrderShipments))
 	http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "static/favicon.ico") })
 
 	port := os.Getenv("PORT")
