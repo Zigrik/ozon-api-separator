@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -58,7 +57,7 @@ type Product struct {
 	IsMandatoryMarked  bool        `json:"is_mandatory_marked"`
 	IsGtdRequired      bool        `json:"is_gtd_required"`
 	IsCountryRequired  bool        `json:"is_country_required"`
-	IsMarkingCompleted bool        `json:"is_marking_completed"` // флаг, что маркировка и ГТД уже добавлены
+	IsMarkingCompleted bool        `json:"is_marking_completed"`
 }
 
 type AnalyticsData struct {
@@ -163,7 +162,7 @@ type ExemplarCreateResponse struct {
 
 type ExemplarStatusResponse struct {
 	PostingNumber string `json:"posting_number"`
-	Status        string `json:"status"` // ship_available, update_available, validation_in_process, update_not_available
+	Status        string `json:"status"`
 	Products      []struct {
 		ProductID int64 `json:"product_id"`
 		Exemplars []struct {
@@ -189,29 +188,52 @@ type ExemplarStatusResponse struct {
 	} `json:"products"`
 }
 
-type LabelRequest struct {
+type CreateLabelRequest struct {
 	PostingNumbers []string `json:"posting_number"`
 }
 
-type LabelResponse struct {
-	ContentType string `json:"content_type"`
-	FileName    string `json:"file_name"`
-	FileContent string `json:"file_content"` // base64 encoded PDF
+type CreateLabelResponse struct {
+	Result struct {
+		Tasks []struct {
+			TaskID   int64  `json:"task_id"`
+			TaskType string `json:"task_type"`
+		} `json:"tasks"`
+	} `json:"result"`
 }
 
-// Глобальная очередь для этикеток
-var labelQueue = struct {
-	sync.Mutex
-	Jobs      map[string][]string // postingNumber -> список идентификаторов отправлений
-	Status    map[string]string   // статус: pending, processing, completed, error
-	Progress  map[string]int      // текущий прогресс
-	Total     map[string]int      // всего
-	StartTime map[string]time.Time
-}{}
+type GetLabelRequest struct {
+	TaskID int64 `json:"task_id"`
+}
+
+type GetLabelResponse struct {
+	Result struct {
+		Error   string `json:"error"`
+		Status  string `json:"status"`
+		FileURL string `json:"file_url"`
+	} `json:"result"`
+}
 
 var appConfig *AppConfig
 var markingCodes []string
 var codesMutex sync.Mutex
+
+// Глобальная очередь для этикеток
+var labelQueue = struct {
+	sync.Mutex
+	Jobs      map[string][]string
+	Status    map[string]string
+	Progress  map[string]int
+	Total     map[string]int
+	StartTime map[string]time.Time
+	Errors    map[string]string
+}{
+	Jobs:      make(map[string][]string),
+	Status:    make(map[string]string),
+	Progress:  make(map[string]int),
+	Total:     make(map[string]int),
+	StartTime: make(map[string]time.Time),
+	Errors:    make(map[string]string),
+}
 
 func getClientIP(r *http.Request) string {
 	ip := r.Header.Get("X-Forwarded-For")
@@ -391,7 +413,7 @@ func makeOzonRequest(cabinet *CabinetConfig, method string, url string, body int
 	req.Header.Set("Api-Key", cabinet.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
@@ -452,11 +474,9 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
 	}
 
-	// Обогащаем товары данными из financial_data и requirements
 	for i := range response.Result.Postings {
 		posting := &response.Result.Postings[i]
 
-		// Создаем карту финансовых данных по SKU
 		financialMap := make(map[int64]*FinancialProduct)
 		if posting.FinancialData != nil {
 			for idx := range posting.FinancialData.Products {
@@ -465,7 +485,6 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 			}
 		}
 
-		// Создаем карты требований
 		markingMap := make(map[int64]bool)
 		gtdMap := make(map[int64]bool)
 		countryMap := make(map[int64]bool)
@@ -482,11 +501,9 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 			}
 		}
 
-		// Обогащаем каждый товар
 		for j := range posting.Products {
 			product := &posting.Products[j]
 
-			// Получаем ProductID и цену из financial_data
 			if fp, ok := financialMap[product.SKU]; ok {
 				product.ProductID = fp.ProductID
 				switch v := fp.Price.(type) {
@@ -502,18 +519,15 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 				product.ProductID = product.SKU
 			}
 
-			// Устанавливаем требования
 			product.IsMandatoryMarked = markingMap[product.ProductID] || markingMap[product.SKU]
 			product.IsGtdRequired = gtdMap[product.ProductID] || gtdMap[product.SKU]
 			product.IsCountryRequired = countryMap[product.ProductID] || countryMap[product.SKU]
 		}
 	}
 
-	// Проверяем статус уже добавленных маркировок через метод /v5/fbs/posting/product/exemplar/status
 	for i := range response.Result.Postings {
 		posting := &response.Result.Postings[i]
 
-		// Проверяем, есть ли в заказе товары, требующие маркировки или ГТД
 		needsCheck := false
 		for _, p := range posting.Products {
 			if p.IsMandatoryMarked || p.IsGtdRequired {
@@ -531,10 +545,8 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 				continue
 			}
 
-			// Если статус всего заказа ship_available - значит все маркировки и ГТД добавлены корректно
 			if statusResp.Status == "ship_available" {
 				log.Printf("✅ Заказ %s полностью готов к отправке (ship_available)", posting.PostingNumber)
-				// Снимаем все требования с товаров в этом заказе
 				for j := range posting.Products {
 					posting.Products[j].IsMandatoryMarked = false
 					posting.Products[j].IsGtdRequired = false
@@ -542,7 +554,6 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 				}
 			} else if statusResp.Status == "update_available" {
 				log.Printf("⚠️ Заказ %s требует добавления маркировки/ГТД (update_available)", posting.PostingNumber)
-				// Оставляем требования, так как нужно добавить маркировку
 			} else if statusResp.Status == "validation_in_process" {
 				log.Printf("⏳ Заказ %s на проверке (validation_in_process)", posting.PostingNumber)
 			} else {
@@ -774,14 +785,28 @@ func handleShipOrders(w http.ResponseWriter, r *http.Request) {
 			"posting_number": order.PostingNumber,
 		}
 
-		err := shipOrder(cabinet, order.PostingNumber, packages)
+		maxRetries := 3
+		retryDelay := 1 * time.Second
+		var err error
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			err = shipOrder(cabinet, order.PostingNumber, packages)
+			if err == nil {
+				break
+			}
+			log.Printf("⚠️ Попытка %d/%d: ошибка отправки %s: %v", attempt, maxRetries, order.PostingNumber, err)
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+			}
+		}
+
 		if err != nil {
 			result["status"] = "error"
 			result["error"] = err.Error()
-			logAction(r, cabinet.Name, fmt.Sprintf("ошибка отправки %s: %v", order.PostingNumber, err))
+			logAction(r, cabinet.Name, fmt.Sprintf("ошибка отправки %s после %d попыток: %v", order.PostingNumber, maxRetries, err))
 		} else {
 			result["status"] = "success"
-			result["message"] = fmt.Sprintf("Заказ %s разделен на %d отправлений и отправлен в доставку", order.PostingNumber, len(packages))
+			result["message"] = fmt.Sprintf("Заказ %s разделен на %d отправлений", order.PostingNumber, len(packages))
 			logAction(r, cabinet.Name, fmt.Sprintf("отправлен %s на %d упаковок", order.PostingNumber, len(packages)))
 		}
 		results = append(results, result)
@@ -818,6 +843,280 @@ func handleGetAvailableCodes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func createLabelTask(cabinet *CabinetConfig, postingNumber string) (int64, error) {
+	url := "https://api-seller.ozon.ru/v2/posting/fbs/package-label/create"
+
+	request := CreateLabelRequest{
+		PostingNumbers: []string{postingNumber},
+	}
+
+	respBody, err := makeOzonRequest(cabinet, "POST", url, request)
+	if err != nil {
+		return 0, err
+	}
+
+	var response CreateLabelResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return 0, err
+	}
+
+	if len(response.Result.Tasks) == 0 {
+		return 0, fmt.Errorf("не получены задачи на этикетки")
+	}
+
+	for _, task := range response.Result.Tasks {
+		if task.TaskType == "small_label" {
+			log.Printf("✅ Создана задача для заказа %s: task_id=%d", postingNumber, task.TaskID)
+			return task.TaskID, nil
+		}
+	}
+
+	log.Printf("⚠️ Для заказа %s маленькая этикетка не найдена, берём первую: task_id=%d", postingNumber, response.Result.Tasks[0].TaskID)
+	return response.Result.Tasks[0].TaskID, nil
+}
+
+func getLabelByTaskID(cabinet *CabinetConfig, taskID int64) ([]byte, error) {
+	url := "https://api-seller.ozon.ru/v1/posting/fbs/package-label/get"
+
+	request := GetLabelRequest{
+		TaskID: taskID,
+	}
+
+	respBody, err := makeOzonRequest(cabinet, "POST", url, request)
+	if err != nil {
+		return nil, err
+	}
+
+	var response GetLabelResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, err
+	}
+
+	if response.Result.Status == "failed" {
+		return nil, fmt.Errorf("ошибка получения этикетки: %s", response.Result.Error)
+	}
+
+	if response.Result.Status != "completed" {
+		return nil, fmt.Errorf("этикетка ещё не готова, статус: %s", response.Result.Status)
+	}
+
+	if response.Result.FileURL == "" {
+		return nil, fmt.Errorf("URL этикетки не получен")
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(response.Result.FileURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("✅ Этикетка загружена: task_id=%d, size=%d bytes", taskID, len(content))
+
+	return content, nil
+}
+
+func getLabelByTaskIDWithRetry(cabinet *CabinetConfig, taskID int64, postingNumber string) ([]byte, error) {
+	maxRetries := 3
+	retryDelay := 2 * time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		log.Printf("📥 Попытка %d: получение этикетки для заказа %s (task_id=%d)", attempt, postingNumber, taskID)
+
+		content, err := getLabelByTaskID(cabinet, taskID)
+		if err == nil {
+			return content, nil
+		}
+
+		log.Printf("⚠️ Ошибка получения этикетки (попытка %d/%d): %v", attempt, maxRetries, err)
+
+		if attempt < maxRetries {
+			time.Sleep(retryDelay)
+		}
+	}
+
+	return nil, fmt.Errorf("не удалось получить этикетку для заказа %s после %d попыток", postingNumber, maxRetries)
+}
+
+func saveLabelToFile(basePath, folderName, fileName string, content []byte) error {
+	fullPath := filepath.Join(basePath, folderName)
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		return err
+	}
+
+	filePath := filepath.Join(fullPath, fileName)
+	return os.WriteFile(filePath, content, 0644)
+}
+
+func handleStartLabelGeneration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		PostingNumbers []string `json:"posting_numbers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	labelQueue.Lock()
+	if labelQueue.Jobs == nil {
+		labelQueue.Jobs = make(map[string][]string)
+	}
+	if labelQueue.Status == nil {
+		labelQueue.Status = make(map[string]string)
+	}
+	if labelQueue.Progress == nil {
+		labelQueue.Progress = make(map[string]int)
+	}
+	if labelQueue.Total == nil {
+		labelQueue.Total = make(map[string]int)
+	}
+	if labelQueue.StartTime == nil {
+		labelQueue.StartTime = make(map[string]time.Time)
+	}
+	if labelQueue.Errors == nil {
+		labelQueue.Errors = make(map[string]string)
+	}
+
+	labelQueue.Jobs[jobID] = req.PostingNumbers
+	labelQueue.Status[jobID] = "pending"
+	labelQueue.Progress[jobID] = 0
+	labelQueue.Total[jobID] = len(req.PostingNumbers)
+	labelQueue.StartTime[jobID] = time.Now()
+	labelQueue.Errors[jobID] = ""
+	labelQueue.Unlock()
+
+	go processLabelJob(jobID)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"job_id": jobID,
+	})
+}
+
+func processLabelJob(jobID string) {
+	time.Sleep(5 * time.Second)
+
+	labelQueue.Lock()
+	postingNumbers := labelQueue.Jobs[jobID]
+	labelQueue.Status[jobID] = "processing"
+	labelQueue.Unlock()
+
+	cabinet := getActiveConfig()
+	labelsPath := os.Getenv("LABELS_PATH")
+	if labelsPath == "" {
+		labelsPath = "labels"
+	}
+
+	completed := 0
+	hasError := false
+	var lastError string
+
+	for _, postingNumber := range postingNumbers {
+		log.Printf("📦 Обработка заказа %s (%d/%d)", postingNumber, completed+1, len(postingNumbers))
+
+		taskID, err := createLabelTask(cabinet, postingNumber)
+		if err != nil {
+			lastError = fmt.Sprintf("Ошибка создания задачи для %s: %v", postingNumber, err)
+			log.Printf("❌ %s", lastError)
+			hasError = true
+			completed++
+			labelQueue.Lock()
+			labelQueue.Progress[jobID] = completed
+			labelQueue.Errors[jobID] = lastError
+			labelQueue.Unlock()
+			continue
+		}
+
+		content, err := getLabelByTaskIDWithRetry(cabinet, taskID, postingNumber)
+		if err != nil {
+			lastError = fmt.Sprintf("Ошибка получения этикетки для %s: %v", postingNumber, err)
+			log.Printf("❌ %s", lastError)
+			hasError = true
+			completed++
+			labelQueue.Lock()
+			labelQueue.Progress[jobID] = completed
+			labelQueue.Errors[jobID] = lastError
+			labelQueue.Unlock()
+			continue
+		}
+
+		fileName := fmt.Sprintf("%s.pdf", postingNumber)
+
+		parts := strings.Split(postingNumber, "-")
+		folderName := strings.Join(parts[:len(parts)-1], "-")
+		if folderName == "" {
+			folderName = postingNumber
+		}
+
+		err = saveLabelToFile(labelsPath, folderName, fileName, content)
+		if err != nil {
+			lastError = fmt.Sprintf("Ошибка сохранения этикетки для %s: %v", postingNumber, err)
+			log.Printf("❌ %s", lastError)
+			hasError = true
+		} else {
+			log.Printf("✅ Этикетка сохранена: %s/%s", folderName, fileName)
+		}
+
+		completed++
+		labelQueue.Lock()
+		labelQueue.Progress[jobID] = completed
+		if hasError {
+			labelQueue.Errors[jobID] = lastError
+		}
+		labelQueue.Unlock()
+	}
+
+	labelQueue.Lock()
+	if hasError {
+		labelQueue.Status[jobID] = "error"
+	} else {
+		labelQueue.Status[jobID] = "completed"
+	}
+	labelQueue.Unlock()
+
+	log.Printf("🎉 Завершена обработка задания %s: %d/%d этикеток, ошибки: %v", jobID, completed, len(postingNumbers), hasError)
+}
+
+func handleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	jobID := r.URL.Query().Get("job_id")
+	if jobID == "" {
+		http.Error(w, "job_id required", http.StatusBadRequest)
+		return
+	}
+
+	labelQueue.Lock()
+	defer labelQueue.Unlock()
+
+	status := labelQueue.Status[jobID]
+	progress := labelQueue.Progress[jobID]
+	total := labelQueue.Total[jobID]
+	errMsg := labelQueue.Errors[jobID]
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   status,
+		"progress": progress,
+		"total":    total,
+		"error":    errMsg,
+	})
+}
+
 func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -845,7 +1144,6 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем коды маркировки
 	codes, err := getMarkingCodes(req.Quantity)
 	if err != nil {
 		log.Printf("❌ Коды: %v", err)
@@ -857,7 +1155,6 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("✅ Получено %d кодов", len(codes))
 
-	// Получаем exemplar_id
 	exemplarData, err := getExemplarIDs(cabinet, req.PostingNumber)
 	if err != nil {
 		log.Printf("❌ Exemplar: %v", err)
@@ -868,7 +1165,6 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Находим exemplar_id для нужного товара
 	var exemplarIDs []int64
 	for _, p := range exemplarData.Products {
 		if p.ProductID == req.ProductID {
@@ -889,7 +1185,6 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Формируем запрос на установку маркировки
 	type Mark struct {
 		Mark     string `json:"mark"`
 		MarkType string `json:"mark_type"`
@@ -935,7 +1230,6 @@ func handleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 		request.Products[0].Exemplars = append(request.Products[0].Exemplars, exemplar)
 	}
 
-	// Отправляем запрос в Ozon
 	url := "https://api-seller.ozon.ru/v6/fbs/posting/product/exemplar/set"
 	log.Printf("📤 Ozon: установка маркировки для %d экземпляров", req.Quantity)
 
@@ -1010,26 +1304,6 @@ func handleSetCountry(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func getLocalIP() string {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return "localhost"
-	}
-	addrs, err := net.LookupIP(hostname)
-	if err == nil {
-		for _, addr := range addrs {
-			if ipv4 := addr.To4(); ipv4 != nil && !addr.IsLoopback() {
-				if ipv4[0] == 169 && ipv4[1] == 254 {
-					continue
-				}
-				return ipv4.String()
-			}
-		}
-	}
-	return "localhost"
-}
-
-// API: получение настроек из .env
 func handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1041,7 +1315,6 @@ func handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		loadingText = "Трудолюбивые ослики делят и сортируют ваши заказы..."
 	}
 
-	// Проверяем наличие файла not_donkey.png
 	imagePath := "static/images/not_donkey.png"
 	log.Printf("🔍 Проверка файла: %s", imagePath)
 
@@ -1062,194 +1335,26 @@ func handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func getPackageLabels(cabinet *CabinetConfig, postingNumbers []string) (*LabelResponse, error) {
-	url := "https://api-seller.ozon.ru/v2/posting/fbs/package-label"
-
-	request := LabelRequest{
-		PostingNumbers: postingNumbers,
-	}
-
-	respBody, err := makeOzonRequest(cabinet, "POST", url, request)
+func getLocalIP() string {
+	hostname, err := os.Hostname()
 	if err != nil {
-		return nil, err
+		return "localhost"
 	}
-
-	var response LabelResponse
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, err
-	}
-
-	return &response, nil
-}
-
-func saveLabelToFile(basePath, folderName, fileName, base64Content string) error {
-	// Создаем папку, если её нет
-	fullPath := filepath.Join(basePath, folderName)
-	if err := os.MkdirAll(fullPath, 0755); err != nil {
-		return err
-	}
-
-	// Декодируем base64
-	content, err := base64.StdEncoding.DecodeString(base64Content)
-	if err != nil {
-		return err
-	}
-
-	// Сохраняем файл
-	filePath := filepath.Join(fullPath, fileName)
-	return os.WriteFile(filePath, content, 0644)
-}
-
-func handleStartLabelGeneration(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req struct {
-		PostingNumbers []string `json:"posting_numbers"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Сохраняем задачу в очередь
-	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	labelQueue.Lock()
-	labelQueue.Jobs[jobID] = req.PostingNumbers
-	labelQueue.Status[jobID] = "pending"
-	labelQueue.Progress[jobID] = 0
-	labelQueue.Total[jobID] = len(req.PostingNumbers)
-	labelQueue.StartTime[jobID] = time.Now()
-	labelQueue.Unlock()
-
-	// Запускаем фоновую обработку
-	go processLabelJob(jobID)
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "ok",
-		"job_id": jobID,
-	})
-}
-
-func processLabelJob(jobID string) {
-	// Ждем 60 секунд перед началом
-	time.Sleep(60 * time.Second)
-
-	labelQueue.Lock()
-	postingNumbers := labelQueue.Jobs[jobID]
-	labelQueue.Status[jobID] = "processing"
-	labelQueue.Unlock()
-
-	cabinet := getActiveConfig()
-	labelsPath := os.Getenv("LABELS_PATH")
-	if labelsPath == "" {
-		labelsPath = "labels"
-	}
-
-	for i, postingNumber := range postingNumbers {
-		// Ждем 2 секунды между запросами
-		if i > 0 {
-			time.Sleep(2 * time.Second)
+	addrs, err := net.LookupIP(hostname)
+	if err == nil {
+		for _, addr := range addrs {
+			if ipv4 := addr.To4(); ipv4 != nil && !addr.IsLoopback() {
+				if ipv4[0] == 169 && ipv4[1] == 254 {
+					continue
+				}
+				return ipv4.String()
+			}
 		}
-
-		// Получаем этикетку
-		label, err := getPackageLabels(cabinet, []string{postingNumber})
-		if err != nil {
-			log.Printf("Ошибка получения этикетки для %s: %v", postingNumber, err)
-			continue
-		}
-
-		// Извлекаем имя папки (часть до последнего дефиса)
-		parts := strings.Split(postingNumber, "-")
-		folderName := strings.Join(parts[:len(parts)-1], "-")
-
-		// Сохраняем файл
-		err = saveLabelToFile(labelsPath, folderName, label.FileName, label.FileContent)
-		if err != nil {
-			log.Printf("Ошибка сохранения этикетки для %s: %v", postingNumber, err)
-		}
-
-		labelQueue.Lock()
-		labelQueue.Progress[jobID] = i + 1
-		labelQueue.Unlock()
 	}
-
-	labelQueue.Lock()
-	labelQueue.Status[jobID] = "completed"
-	labelQueue.Unlock()
-}
-
-func handleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	jobID := r.URL.Query().Get("job_id")
-	if jobID == "" {
-		http.Error(w, "job_id required", http.StatusBadRequest)
-		return
-	}
-
-	labelQueue.Lock()
-	defer labelQueue.Unlock()
-
-	status := labelQueue.Status[jobID]
-	progress := labelQueue.Progress[jobID]
-	total := labelQueue.Total[jobID]
-	startTime := labelQueue.StartTime[jobID]
-
-	elapsed := time.Since(startTime).Seconds()
-	timeToStart := 0.0
-	if elapsed < 60 {
-		timeToStart = 60 - elapsed
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":        status,
-		"progress":      progress,
-		"total":         total,
-		"time_to_start": timeToStart,
-		"elapsed":       elapsed,
-	})
-}
-
-const decryptKey = "vGlxAZOhrJY+VjopJqaSQAc4e8zW9qAj2G5coWmQ3X4="
-
-var currentCompany string
-
-func main() {
-	// Проверяем лицензию
-	// Первый параметр — встроенный ключ (строка)
-	// Второй — путь к файлу лицензии
-	// Третий — название продукта
-	result := license.CheckLicense(
-		decryptKey,         // ← ключ зашит в коде
-		"license.key",      // файл с лицензией
-		"OZON Api Cabinet", // название продукта
-	)
-
-	if !result.Valid {
-		log.Fatalf("\n"+
-			"═══════════════════════════════════════════════════\n"+
-			"❌ ОШИБКА ЛИЦЕНЗИИ\n"+
-			"%s\n"+
-			"═══════════════════════════════════════════════════\n"+
-			"📞 Обратитесь к администратору\n",
-			result.Error)
-	}
-
-	currentCompany = result.Company
-	log.Printf("✅ Лицензия активна. Компания: %s", currentCompany)
-
-	// Ваш код здесь
-	runApp()
+	return "localhost"
 }
 
 func runApp() {
-
 	if err := loadConfig(); err != nil {
 		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
 	}
@@ -1292,4 +1397,26 @@ func runApp() {
 	localIP := getLocalIP()
 	log.Printf("Сервер запущен на http://%s:%s (http://localhost:%s)", localIP, port, port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func main() {
+	result := license.CheckLicense(
+		"vGlxAZOhrJY+VjopJqaSQAc4e8zW9qAj2G5coWmQ3X4=",
+		"license.key",
+		"OZON Api Cabinet",
+	)
+
+	if !result.Valid {
+		log.Fatalf("\n"+
+			"═══════════════════════════════════════════════════\n"+
+			"❌ ОШИБКА ЛИЦЕНЗИИ\n"+
+			"%s\n"+
+			"═══════════════════════════════════════════════════\n"+
+			"📞 Обратитесь к администратору\n",
+			result.Error)
+	}
+
+	log.Printf("✅ Лицензия активна. Компания: %s", result.Company)
+
+	runApp()
 }

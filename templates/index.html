@@ -28,6 +28,7 @@
                 <div id="labelStatus" class="label-status" style="display:none;">
                     <span id="labelStatusText"></span>
                     <span id="labelProgress"></span>
+                    <span id="labelStatusClose" class="label-status-close" style="display:none;">✖</span>
                 </div>
             </div>
 
@@ -96,7 +97,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно для маркировки и ГТД -->
     <div id="markingModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -114,7 +114,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно для страны производителя -->
     <div id="countryModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -138,12 +137,11 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.6.0 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.6.1 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
     <script>
-        // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
         let isAuth = false;
         let orders = [];
         let authToken = localStorage.getItem('authToken');
@@ -151,18 +149,19 @@
         let currentMarkingData = null;
         let currentCountryData = null;
         
-        // ========== НАСТРОЙКИ ДЛЯ ОВЕРЛЕЯ ==========
         let loadingText = "Трудолюбивые ослики делят и сортируют ваши заказы...";
         let customImage = null;
         
-        // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+        let currentLabelJobId = null;
+        let labelStatusInterval = null;
+
         function showToast(msg, isErr = false) {
             const toast = document.getElementById('toast');
             toast.textContent = msg;
             toast.className = 'toast show ' + (isErr ? 'error' : 'success');
             setTimeout(() => toast.className = 'toast', 3000);
         }
-        
+
         function showOverlay() {
             let overlay = document.getElementById('loadingOverlay');
             if (overlay) {
@@ -189,25 +188,23 @@
             `;
             document.body.appendChild(overlay);
         }
-        
+
         function hideOverlay() {
             const overlay = document.getElementById('loadingOverlay');
             if (overlay) overlay.style.display = 'none';
         }
-        
+
         async function loadSettings() {
             try {
                 const res = await fetch('/api/settings');
                 const data = await res.json();
                 if (data.loading_text) loadingText = data.loading_text;
                 if (data.custom_image) customImage = data.custom_image;
-                console.log('Настройки загружены:', { loadingText, customImage });
             } catch (err) {
                 console.log('Ошибка загрузки настроек:', err);
             }
         }
-        
-        // ========== API ==========
+
         async function apiRequest(url, opts = {}) {
             const headers = { 'Content-Type': 'application/json', ...opts.headers };
             if (authToken) headers['X-Auth-Token'] = authToken;
@@ -226,8 +223,7 @@
             }
             return res.json();
         }
-        
-        // ========== СТРАНЫ ==========
+
         async function loadCountries() {
             try {
                 const data = await apiRequest('/api/countries/list');
@@ -238,7 +234,7 @@
                 console.error('Ошибка загрузки стран:', err);
             }
         }
-        
+
         function filterCountries(searchText) {
             const select = document.getElementById('countrySelect');
             const searchLower = searchText.toLowerCase().trim();
@@ -274,8 +270,7 @@
                 });
             }
         }
-        
-        // ========== КОДЫ МАРКИРОВКИ ==========
+
         async function updateAvailableCodes() {
             try {
                 const data = await apiRequest('/api/codes/available');
@@ -285,8 +280,7 @@
                 return 0;
             }
         }
-        
-        // ========== СТАТИСТИКА ==========
+
         function updateIssuesStats() {
             let countryRequired = 0;
             let markingRequired = 0;
@@ -301,7 +295,7 @@
             document.getElementById('countryRequiredCount').textContent = countryRequired;
             document.getElementById('markingRequiredCount').textContent = markingRequired;
         }
-        
+
         function calcPrice(order) {
             let total = 0;
             order.products.forEach(p => {
@@ -310,7 +304,7 @@
             });
             return total;
         }
-        
+
         function updateStats() {
             const selected = document.querySelectorAll('.order-row.selected');
             const allRows = document.querySelectorAll('.order-row');
@@ -355,7 +349,7 @@
             document.getElementById('footerTotalProducts').textContent = totalProductsCount;
             document.getElementById('footerSelectedPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
         }
-        
+
         function updateSelectAll() {
             const left = document.getElementById('selectAllLeft');
             const right = document.getElementById('selectAllRight');
@@ -380,7 +374,7 @@
             right.checked = allChecked;
             right.indeterminate = !allChecked && someChecked;
         }
-        
+
         function selectAll(checked) {
             const checkboxes = document.querySelectorAll('.order-checkbox:not([disabled])');
             checkboxes.forEach(cb => cb.checked = checked);
@@ -399,7 +393,7 @@
             updateSelectAll();
             updateStats();
         }
-        
+
         function syncCheckbox(cb, row) {
             const num = cb.dataset.postingNumber;
             const allCheckboxes = document.querySelectorAll(`.order-checkbox[data-posting-number="${num}"]`);
@@ -416,7 +410,7 @@
             updateSelectAll();
             updateStats();
         }
-        
+
         function toggleRow(row, leftCb, rightCb) {
             if (leftCb && leftCb.disabled) return;
             const newState = !leftCb.checked;
@@ -430,8 +424,7 @@
             updateSelectAll();
             updateStats();
         }
-        
-        // ========== МОДАЛЬНЫЕ ОКНА ==========
+
         async function openMarkingModal(order, product) {
             const available = await updateAvailableCodes();
             if (available < product.quantity) {
@@ -449,7 +442,7 @@
             document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>⚠️ ГТД будет отмечено как отсутствующее автоматически.`;
             modal.style.display = 'flex';
         }
-        
+
         async function addMarkings() {
             if (!currentMarkingData) return;
             try {
@@ -476,7 +469,7 @@
                 showToast(`❌ ${err.message}`, true);
             }
         }
-        
+
         async function openCountryModal(order, product) {
             await loadCountries();
             const searchInput = document.getElementById('countrySearchInput');
@@ -492,7 +485,7 @@
             modal.style.display = 'flex';
             setTimeout(() => searchInput?.focus(), 100);
         }
-        
+
         async function setCountry() {
             if (!currentCountryData) return;
             const select = document.getElementById('countrySelect');
@@ -529,15 +522,14 @@
                 showToast(`❌ ${err.message}`, true);
             }
         }
-        
+
         function closeAllModals() {
             document.getElementById('markingModal').style.display = 'none';
             document.getElementById('countryModal').style.display = 'none';
             currentMarkingData = null;
             currentCountryData = null;
         }
-        
-        // ========== АВТОРИЗАЦИЯ ==========
+
         async function checkPassword() {
             const pwd = document.getElementById('passwordInput').value;
             const errDiv = document.getElementById('authError');
@@ -569,8 +561,7 @@
                 showToast(err.message, true);
             }
         }
-        
-        // ========== ЗАГРУЗКА ЗАКАЗОВ ==========
+
         async function loadOrders() {
             try {
                 showToast('Загрузка...');
@@ -672,7 +663,7 @@
                 if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
             }
         }
-        
+
         function getStatusText(s) {
             const map = {
                 'awaiting_packaging': 'Ожидает сборки',
@@ -683,15 +674,14 @@
             };
             return map[s] || s;
         }
-        
+
         function escapeHtml(text) {
             if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
-        
-        // ========== ОТПРАВКА ЗАКАЗОВ ==========
+
         async function splitOrders() {
             const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
             if (cbs.length === 0) {
@@ -737,8 +727,7 @@
                 if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
             }
         }
-        
-        // ========== РАЗДЕЛЕНИЕ И СКАЧИВАНИЕ МАРОК ==========
+
         async function generateAndDownloadLabels() {
             const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
             if (cbs.length === 0) {
@@ -748,7 +737,6 @@
             
             const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
             
-            // Сначала разделяем заказы
             showOverlay();
             try {
                 const toShip = [];
@@ -782,65 +770,84 @@
                     else err++;
                 });
                 
+                hideOverlay();
+                
                 if (ok === 0) {
-                    hideOverlay();
                     showToast('Ошибка при разделении заказов', true);
                     return;
                 }
                 
-                // Запускаем генерацию этикеток
                 const labelData = await apiRequest('/api/labels/generate', {
                     method: 'POST',
                     body: JSON.stringify({ posting_numbers: numbers })
                 });
                 
-                const jobId = labelData.job_id;
-                showLabelStatus(jobId);
+                currentLabelJobId = labelData.job_id;
+                startLabelStatusTracking();
                 
             } catch (err) {
                 hideOverlay();
                 showToast('Ошибка: ' + err.message, true);
             }
         }
-        
-        async function showLabelStatus(jobId) {
+
+        function startLabelStatusTracking() {
             const statusDiv = document.getElementById('labelStatus');
             const statusText = document.getElementById('labelStatusText');
             const progressSpan = document.getElementById('labelProgress');
+            const closeBtn = document.getElementById('labelStatusClose');
             
             statusDiv.style.display = 'flex';
             
-            const interval = setInterval(async () => {
+            if (labelStatusInterval) {
+                clearInterval(labelStatusInterval);
+            }
+            
+            labelStatusInterval = setInterval(async () => {
+                if (!currentLabelJobId) return;
+                
                 try {
-                    const data = await apiRequest(`/api/labels/status?job_id=${jobId}`);
+                    const data = await apiRequest(`/api/labels/status?job_id=${currentLabelJobId}`);
                     
-                    if (data.time_to_start > 0) {
-                        statusText.textContent = `⏳ Ожидание начала (${Math.ceil(data.time_to_start)} сек)`;
-                        progressSpan.textContent = `${data.progress}/${data.total}`;
-                    } else if (data.status === 'processing') {
+                    if (data.status === 'processing') {
                         statusText.textContent = `🏷️ Генерация этикеток...`;
                         progressSpan.textContent = `${data.progress}/${data.total}`;
+                        if (closeBtn) closeBtn.style.display = 'none';
                     } else if (data.status === 'completed') {
-                        clearInterval(interval);
                         statusText.textContent = `✅ Этикетки сохранены!`;
-                        progressSpan.textContent = `${data.total}/${data.total}`;
+                        progressSpan.textContent = `${data.progress}/${data.total}`;
+                        if (closeBtn) closeBtn.style.display = 'none';
+                        clearInterval(labelStatusInterval);
+                        labelStatusInterval = null;
                         setTimeout(() => {
                             statusDiv.style.display = 'none';
+                            currentLabelJobId = null;
                         }, 5000);
-                        hideOverlay();
                         await loadOrders();
                     } else if (data.status === 'error') {
-                        clearInterval(interval);
-                        statusText.textContent = `❌ Ошибка при генерации`;
-                        hideOverlay();
+                        statusText.textContent = `❌ Ошибка: ${data.error || 'неизвестная ошибка'}`;
+                        progressSpan.textContent = `${data.progress}/${data.total}`;
+                        if (closeBtn) closeBtn.style.display = 'inline-block';
+                        clearInterval(labelStatusInterval);
+                        labelStatusInterval = null;
                     }
                 } catch (err) {
                     console.error('Status check error:', err);
                 }
             }, 2000);
+            
+            if (closeBtn) {
+                closeBtn.onclick = function() {
+                    statusDiv.style.display = 'none';
+                    if (labelStatusInterval) {
+                        clearInterval(labelStatusInterval);
+                        labelStatusInterval = null;
+                    }
+                    currentLabelJobId = null;
+                };
+            }
         }
-        
-        // ========== ПЕРЕКЛЮЧЕНИЕ КАБИНЕТА ==========
+
         async function switchCabinet(cabinet) {
             try {
                 const colors = { shinorama: '#e8f5e9', trecktrack: '#fff9c4', sevenhundredshin: '#ffebee' };
@@ -860,8 +867,7 @@
                 if (err.message !== 'unauthorized') showToast('Ошибка переключения: ' + err.message, true);
             }
         }
-        
-        // ========== ИНИЦИАЛИЗАЦИЯ ==========
+
         document.addEventListener('DOMContentLoaded', async () => {
             await loadSettings();
             

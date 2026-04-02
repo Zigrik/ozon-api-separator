@@ -536,7 +536,6 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     color: #fff;
 }
 
-/* Стили для индикатора статуса этикеток */
 .label-status {
     display: flex;
     align-items: center;
@@ -546,6 +545,16 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     border-radius: 20px;
     font-size: 13px;
     border-left: 3px solid #ffc107;
+}
+
+.label-status-close {
+    color: #999;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.label-status-close:hover {
+    color: #333;
 }
 
 .label-status span:first-child {
