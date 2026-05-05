@@ -137,7 +137,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.6.2 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.7.0 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -159,7 +159,7 @@
             const toast = document.getElementById('toast');
             toast.textContent = msg;
             toast.className = 'toast show ' + (isErr ? 'error' : 'success');
-            setTimeout(() => toast.className = 'toast', 3000);
+            setTimeout(() => toast.className = 'toast', 5000);
         }
 
         function showOverlay() {
@@ -425,24 +425,6 @@
             updateStats();
         }
 
-        async function getShipmentsWithRetry(originalNumber, maxRetries = 5) {
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                console.log(`📦 Попытка ${attempt}: получение подзаказов для ${originalNumber}`);
-                
-                const data = await apiRequest(`/api/orders/shipments?posting_number=${originalNumber}`);
-                
-                if (data.shipments && data.shipments.length > 0) {
-                    console.log(`✅ Найдено подзаказов: ${data.shipments.length}`);
-                    return data.shipments;
-                }
-                
-                if (attempt < maxRetries) {
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // ждём 1 секунду
-                }
-            }
-            return [];
-        }
-
         async function openMarkingModal(order, product) {
             const available = await updateAvailableCodes();
             if (available < product.quantity) {
@@ -587,7 +569,7 @@
                 orders = data.orders;
                 const tbody = document.getElementById('ordersList');
                 if (orders.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></td>';
                 } else {
                     tbody.innerHTML = orders.map((order, i) => {
                         const price = calcPrice(order);
@@ -777,44 +759,41 @@
                     return;
                 }
                 
-                // 1. Разделяем заказы
                 const shipData = await apiRequest('/api/orders/ship', {
                     method: 'POST',
                     body: JSON.stringify({ orders: toShip })
                 });
                 
                 let ok = 0, err = 0;
-                const successfulOrders = [];
+                const allShipments = [];
                 shipData.results.forEach(r => {
                     if (r.status === 'success') {
                         ok++;
-                        successfulOrders.push(r.posting_number);
+                        if (r.shipments && r.shipments.length) {
+                            allShipments.push(...r.shipments);
+                        } else {
+                            console.warn('Нет shipments в ответе для заказа:', r.posting_number);
+                        }
                     } else {
                         err++;
+                        console.error('Ошибка разделения заказа:', r.posting_number, r.error);
                     }
                 });
                 
+                hideOverlay();
+                
                 if (ok === 0) {
-                    hideOverlay();
-                    showToast('Ошибка при разделении заказов', true);
+                    showToast('Ошибка при разделении заказов (подробности в консоли)', true);
                     return;
                 }
-                // 2. Получаем все подзаказы (отправления) с повторными попытками
-                showToast('Получение списка отправлений...');
-                const allShipments = [];
-                for (const originalNumber of successfulOrders) {
-                    const shipments = await getShipmentsWithRetry(originalNumber);
-                    allShipments.push(...shipments);
-                }
-                
-                hideOverlay();
                 
                 if (allShipments.length === 0) {
                     showToast('Не найдены отправления для заказов', true);
                     return;
                 }
                 
-                // 3. Запускаем генерацию этикеток для всех отправлений
+                console.log('Все отправления для этикеток:', allShipments);
+                
                 const labelData = await apiRequest('/api/labels/generate', {
                     method: 'POST',
                     body: JSON.stringify({ posting_numbers: allShipments })
@@ -825,6 +804,7 @@
                 
             } catch (err) {
                 hideOverlay();
+                console.error('Ошибка в generateAndDownloadLabels:', err);
                 showToast('Ошибка: ' + err.message, true);
             }
         }

@@ -115,6 +115,22 @@ type ShipProduct struct {
 	Quantity  int   `json:"quantity"`
 }
 
+type ShipResponse struct {
+	AdditionalData []struct {
+		PostingNumber string `json:"posting_number"`
+		Products      []struct {
+			CurrencyCode  string   `json:"currency_code"`
+			MandatoryMark []string `json:"mandatory_mark"`
+			Name          string   `json:"name"`
+			OfferID       string   `json:"offer_id"`
+			Price         string   `json:"price"`
+			Quantity      int      `json:"quantity"`
+			SKU           int64    `json:"sku"`
+		} `json:"products"`
+	} `json:"additional_data"`
+	Result []string `json:"result"`
+}
+
 type CountryInfo struct {
 	Name string `json:"name"`
 	Code string `json:"code"`
@@ -220,20 +236,26 @@ var codesMutex sync.Mutex
 // Глобальная очередь для этикеток
 var labelQueue = struct {
 	sync.Mutex
-	Jobs      map[string][]string
-	Status    map[string]string
-	Progress  map[string]int
-	Total     map[string]int
-	StartTime map[string]time.Time
-	Errors    map[string]string
+	Jobs        map[string][]string
+	Status      map[string]string
+	Progress    map[string]int
+	Total       map[string]int
+	StartTime   map[string]time.Time
+	Errors      map[string]string
+	FailedItems map[string][]string
 }{
-	Jobs:      make(map[string][]string),
-	Status:    make(map[string]string),
-	Progress:  make(map[string]int),
-	Total:     make(map[string]int),
-	StartTime: make(map[string]time.Time),
-	Errors:    make(map[string]string),
+	Jobs:        make(map[string][]string),
+	Status:      make(map[string]string),
+	Progress:    make(map[string]int),
+	Total:       make(map[string]int),
+	StartTime:   make(map[string]time.Time),
+	Errors:      make(map[string]string),
+	FailedItems: make(map[string][]string),
 }
+
+// Мьютекс для блокировки кнопки разделения с этикетками
+var labelGenerationMutex sync.Mutex
+var isLabelGenerationRunning = false
 
 func getClientIP(r *http.Request) string {
 	ip := r.Header.Get("X-Forwarded-For")
@@ -565,14 +587,24 @@ func getAwaitingPackagingOrders(cabinet *CabinetConfig) ([]Posting, error) {
 	return response.Result.Postings, nil
 }
 
-func shipOrder(cabinet *CabinetConfig, postingNumber string, packages []ShipPackage) error {
+func shipOrder(cabinet *CabinetConfig, postingNumber string, packages []ShipPackage) ([]string, error) {
 	url := "https://api-seller.ozon.ru/v4/posting/fbs/ship"
 	request := ShipRequest{
 		PostingNumber: postingNumber,
 		Packages:      packages,
 	}
-	_, err := makeOzonRequest(cabinet, "POST", url, request)
-	return err
+
+	respBody, err := makeOzonRequest(cabinet, "POST", url, request)
+	if err != nil {
+		return nil, err
+	}
+
+	var response ShipResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, err
+	}
+
+	return response.Result, nil
 }
 
 func getExemplarIDs(cabinet *CabinetConfig, postingNumber string) (*ExemplarCreateResponse, error) {
@@ -717,75 +749,6 @@ func handleSwitchCabinet(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "active": req.Cabinet})
 }
 
-func getOrderShipments(cabinet *CabinetConfig, originalPostingNumber string) ([]string, error) {
-	// Ждём 2 секунды, чтобы подзаказы появились в системе
-	time.Sleep(2 * time.Second)
-
-	url := "https://api-seller.ozon.ru/v3/posting/fbs/unfulfilled/list"
-	now := time.Now()
-	cutoffFrom := now.AddDate(0, 0, -1)
-	cutoffTo := now.AddDate(0, 0, 7)
-
-	filter := PostingsFilter{
-		Limit:  200,
-		Offset: 0,
-	}
-	filter.Filter.CutoffFrom = &cutoffFrom
-	filter.Filter.CutoffTo = &cutoffTo
-
-	respBody, err := makeOzonRequest(cabinet, "POST", url, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	var response struct {
-		Result struct {
-			Postings []struct {
-				PostingNumber       string `json:"posting_number"`
-				ParentPostingNumber string `json:"parent_posting_number"`
-			} `json:"postings"`
-		} `json:"result"`
-	}
-
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, err
-	}
-
-	var shipments []string
-	for _, p := range response.Result.Postings {
-		if p.ParentPostingNumber == originalPostingNumber {
-			shipments = append(shipments, p.PostingNumber)
-		}
-	}
-
-	return shipments, nil
-}
-
-func handleGetOrderShipments(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	postingNumber := r.URL.Query().Get("posting_number")
-	if postingNumber == "" {
-		http.Error(w, "posting_number required", http.StatusBadRequest)
-		return
-	}
-
-	cabinet := getActiveConfig()
-	shipments, err := getOrderShipments(cabinet, postingNumber)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "ok",
-		"shipments": shipments,
-	})
-}
-
 func handleGetOrders(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -856,10 +819,11 @@ func handleShipOrders(w http.ResponseWriter, r *http.Request) {
 
 		maxRetries := 3
 		retryDelay := 1 * time.Second
+		var shipments []string
 		var err error
 
 		for attempt := 1; attempt <= maxRetries; attempt++ {
-			err = shipOrder(cabinet, order.PostingNumber, packages)
+			shipments, err = shipOrder(cabinet, order.PostingNumber, packages)
 			if err == nil {
 				break
 			}
@@ -875,6 +839,7 @@ func handleShipOrders(w http.ResponseWriter, r *http.Request) {
 			logAction(r, cabinet.Name, fmt.Sprintf("ошибка отправки %s после %d попыток: %v", order.PostingNumber, maxRetries, err))
 		} else {
 			result["status"] = "success"
+			result["shipments"] = shipments
 			result["message"] = fmt.Sprintf("Заказ %s разделен на %d отправлений", order.PostingNumber, len(packages))
 			logAction(r, cabinet.Name, fmt.Sprintf("отправлен %s на %d упаковок", order.PostingNumber, len(packages)))
 		}
@@ -1022,16 +987,32 @@ func saveLabelToFile(basePath, folderName, fileName string, content []byte) erro
 	return os.WriteFile(filePath, content, 0644)
 }
 
-func handleStartLabelGeneration(w http.ResponseWriter, r *http.Request) {
+func handleStartLabelGenerationForShipments(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Блокируем выполнение, если уже есть активный процесс
+	labelGenerationMutex.Lock()
+	if isLabelGenerationRunning {
+		labelGenerationMutex.Unlock()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "busy",
+			"message": "Уже выполняется генерация этикеток. Дождитесь завершения.",
+		})
+		return
+	}
+	isLabelGenerationRunning = true
+	labelGenerationMutex.Unlock()
+
 	var req struct {
 		PostingNumbers []string `json:"posting_numbers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		labelGenerationMutex.Lock()
+		isLabelGenerationRunning = false
+		labelGenerationMutex.Unlock()
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1057,6 +1038,9 @@ func handleStartLabelGeneration(w http.ResponseWriter, r *http.Request) {
 	if labelQueue.Errors == nil {
 		labelQueue.Errors = make(map[string]string)
 	}
+	if labelQueue.FailedItems == nil {
+		labelQueue.FailedItems = make(map[string][]string)
+	}
 
 	labelQueue.Jobs[jobID] = req.PostingNumbers
 	labelQueue.Status[jobID] = "pending"
@@ -1064,8 +1048,10 @@ func handleStartLabelGeneration(w http.ResponseWriter, r *http.Request) {
 	labelQueue.Total[jobID] = len(req.PostingNumbers)
 	labelQueue.StartTime[jobID] = time.Now()
 	labelQueue.Errors[jobID] = ""
+	labelQueue.FailedItems[jobID] = make([]string, 0)
 	labelQueue.Unlock()
 
+	// Запускаем фоновую обработку
 	go processLabelJob(jobID)
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1075,6 +1061,13 @@ func handleStartLabelGeneration(w http.ResponseWriter, r *http.Request) {
 }
 
 func processLabelJob(jobID string) {
+	// По окончании снимаем блокировку
+	defer func() {
+		labelGenerationMutex.Lock()
+		isLabelGenerationRunning = false
+		labelGenerationMutex.Unlock()
+	}()
+
 	time.Sleep(5 * time.Second)
 
 	labelQueue.Lock()
@@ -1091,6 +1084,7 @@ func processLabelJob(jobID string) {
 	completed := 0
 	hasError := false
 	var lastError string
+	failedList := make([]string, 0)
 
 	for _, postingNumber := range postingNumbers {
 		log.Printf("📦 Обработка заказа %s (%d/%d)", postingNumber, completed+1, len(postingNumbers))
@@ -1100,10 +1094,12 @@ func processLabelJob(jobID string) {
 			lastError = fmt.Sprintf("Ошибка создания задачи для %s: %v", postingNumber, err)
 			log.Printf("❌ %s", lastError)
 			hasError = true
+			failedList = append(failedList, postingNumber)
 			completed++
 			labelQueue.Lock()
 			labelQueue.Progress[jobID] = completed
 			labelQueue.Errors[jobID] = lastError
+			labelQueue.FailedItems[jobID] = failedList
 			labelQueue.Unlock()
 			continue
 		}
@@ -1113,10 +1109,12 @@ func processLabelJob(jobID string) {
 			lastError = fmt.Sprintf("Ошибка получения этикетки для %s: %v", postingNumber, err)
 			log.Printf("❌ %s", lastError)
 			hasError = true
+			failedList = append(failedList, postingNumber)
 			completed++
 			labelQueue.Lock()
 			labelQueue.Progress[jobID] = completed
 			labelQueue.Errors[jobID] = lastError
+			labelQueue.FailedItems[jobID] = failedList
 			labelQueue.Unlock()
 			continue
 		}
@@ -1134,6 +1132,7 @@ func processLabelJob(jobID string) {
 			lastError = fmt.Sprintf("Ошибка сохранения этикетки для %s: %v", postingNumber, err)
 			log.Printf("❌ %s", lastError)
 			hasError = true
+			failedList = append(failedList, postingNumber)
 		} else {
 			log.Printf("✅ Этикетка сохранена: %s/%s", folderName, fileName)
 		}
@@ -1143,6 +1142,7 @@ func processLabelJob(jobID string) {
 		labelQueue.Progress[jobID] = completed
 		if hasError {
 			labelQueue.Errors[jobID] = lastError
+			labelQueue.FailedItems[jobID] = failedList
 		}
 		labelQueue.Unlock()
 	}
@@ -1155,7 +1155,7 @@ func processLabelJob(jobID string) {
 	}
 	labelQueue.Unlock()
 
-	log.Printf("🎉 Завершена обработка задания %s: %d/%d этикеток, ошибки: %v", jobID, completed, len(postingNumbers), hasError)
+	log.Printf("🎉 Завершена обработка задания %s: %d/%d этикеток, ошибки: %v, неудачные: %v", jobID, completed, len(postingNumbers), hasError, failedList)
 }
 
 func handleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
@@ -1177,12 +1177,88 @@ func handleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
 	progress := labelQueue.Progress[jobID]
 	total := labelQueue.Total[jobID]
 	errMsg := labelQueue.Errors[jobID]
+	failedItems := labelQueue.FailedItems[jobID]
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":   status,
-		"progress": progress,
-		"total":    total,
-		"error":    errMsg,
+		"status":       status,
+		"progress":     progress,
+		"total":        total,
+		"error":        errMsg,
+		"failed_items": failedItems,
+	})
+}
+
+func handleCancelLabelGeneration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	labelGenerationMutex.Lock()
+	if isLabelGenerationRunning {
+		isLabelGenerationRunning = false
+		labelGenerationMutex.Unlock()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ok",
+			"message": "Генерация этикеток отменена",
+		})
+	} else {
+		labelGenerationMutex.Unlock()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "idle",
+			"message": "Нет активных задач",
+		})
+	}
+}
+
+func handleRetryLabelGeneration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	labelGenerationMutex.Lock()
+	if isLabelGenerationRunning {
+		labelGenerationMutex.Unlock()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "busy",
+			"message": "Уже выполняется генерация этикеток",
+		})
+		return
+	}
+	isLabelGenerationRunning = true
+	labelGenerationMutex.Unlock()
+
+	var req struct {
+		JobID       string   `json:"job_id"`
+		FailedItems []string `json:"failed_items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		labelGenerationMutex.Lock()
+		isLabelGenerationRunning = false
+		labelGenerationMutex.Unlock()
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Создаём новый job для повторной попытки
+	newJobID := fmt.Sprintf("retry_%d", time.Now().UnixNano())
+
+	labelQueue.Lock()
+	labelQueue.Jobs[newJobID] = req.FailedItems
+	labelQueue.Status[newJobID] = "pending"
+	labelQueue.Progress[newJobID] = 0
+	labelQueue.Total[newJobID] = len(req.FailedItems)
+	labelQueue.StartTime[newJobID] = time.Now()
+	labelQueue.Errors[newJobID] = ""
+	labelQueue.FailedItems[newJobID] = make([]string, 0)
+	labelQueue.Unlock()
+
+	go processLabelJob(newJobID)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"job_id": newJobID,
 	})
 }
 
@@ -1404,6 +1480,22 @@ func handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func handleLabelGenerationStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	labelGenerationMutex.Lock()
+	running := isLabelGenerationRunning
+	labelGenerationMutex.Unlock()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"is_busy": running,
+	})
+}
+
 func getLocalIP() string {
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -1450,9 +1542,11 @@ func runApp() {
 	http.HandleFunc("/api/countries/list", authMiddleware(handleGetCountries))
 	http.HandleFunc("/api/countries/set", authMiddleware(handleSetCountry))
 	http.HandleFunc("/api/settings", handleGetSettings)
-	http.HandleFunc("/api/labels/generate", authMiddleware(handleStartLabelGeneration))
+	http.HandleFunc("/api/labels/generate", authMiddleware(handleStartLabelGenerationForShipments))
 	http.HandleFunc("/api/labels/status", authMiddleware(handleGetLabelStatus))
-	http.HandleFunc("/api/orders/shipments", authMiddleware(handleGetOrderShipments))
+	http.HandleFunc("/api/labels/cancel", authMiddleware(handleCancelLabelGeneration))
+	http.HandleFunc("/api/labels/retry", authMiddleware(handleRetryLabelGeneration))
+	http.HandleFunc("/api/labels/is-busy", authMiddleware(handleLabelGenerationStatus))
 	http.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) { http.ServeFile(w, r, "static/favicon.ico") })
 
 	port := os.Getenv("PORT")
