@@ -22,7 +22,7 @@ profile.cov
 
 # Labels
 label/
-.pdf
+*.pdf
 
 # Go workspace file
 go.work
