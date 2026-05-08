@@ -25,10 +25,20 @@
                     <button class="cabinet-btn" data-cabinet="trecktrack">TreckTrack</button>
                     <button class="cabinet-btn" data-cabinet="sevenhundredshin">700shin</button>
                 </div>
-                <div id="labelStatus" class="label-status" style="display:none;">
-                    <span id="labelStatusText"></span>
-                    <span id="labelProgress"></span>
-                    <span id="labelStatusClose" class="label-status-close" style="display:none;">✖</span>
+                <div class="header-controls">
+                    <div class="auto-mode-control">
+                        <span class="auto-mode-label">🤖 Авто-режим</span>
+                        <label class="switch">
+                            <input type="checkbox" id="autoModeToggle">
+                            <span class="slider round"></span>
+                        </label>
+                        <span id="autoModeStatus" class="auto-mode-indicator">выкл</span>
+                    </div>
+                    <div id="labelStatus" class="label-status" style="display:none;">
+                        <span id="labelStatusText"></span>
+                        <span id="labelProgress"></span>
+                        <span id="labelStatusClose" class="label-status-close" style="display:none;">✖</span>
+                    </div>
                 </div>
             </div>
 
@@ -66,6 +76,7 @@
                                     <th>Номер заказа</th>
                                     <th class="status-cell">Статус</th>
                                     <th>Товары</th>
+                                    <th>Код товара</th>
                                     <th class="quantity-header">Кол-во</th>
                                     <th class="price-cell">Сумма</th>
                                     <th class="checkbox-cell"><input type="checkbox" id="selectAllRight"></th>
@@ -75,7 +86,7 @@
                             <tfoot id="ordersFooter">
                                 <tr>
                                     <td class="checkbox-cell"></td>
-                                    <td colspan="5" style="text-align: left; padding: 8px;">
+                                    <td colspan="6" style="text-align: left; padding: 8px;">
                                         <div class="stats-panel" style="margin: 0; gap: 24px; background: transparent; padding: 0;">
                                             <span>📊 Выделено (всего): <strong id="footerSelectedOrders">0</strong>(<strong id="footerTotalOrders">0</strong>) заказов</span>
                                             <span>📦 Товаров: <strong id="footerSelectedProducts">0</strong>(<strong id="footerTotalProducts">0</strong>)</span>
@@ -137,7 +148,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.7.0 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.8.0 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -222,6 +233,41 @@
                 throw new Error(err.error || 'Ошибка запроса');
             }
             return res.json();
+        }
+
+        // ==================== АВТО-РЕЖИМ ====================
+        async function loadAutoModeStatus() {
+            try {
+                const data = await apiRequest('/api/auto-mode/status');
+                const toggle = document.getElementById('autoModeToggle');
+                if (toggle) toggle.checked = data.enabled;
+                updateAutoModeIndicator(data.enabled);
+            } catch (err) {
+                console.error('Ошибка загрузки статуса авто-режима:', err);
+            }
+        }
+
+        async function toggleAutoMode(enabled) {
+            try {
+                await apiRequest('/api/auto-mode/toggle', {
+                    method: 'POST',
+                    body: JSON.stringify({ enabled })
+                });
+                updateAutoModeIndicator(enabled);
+                showToast(`Авто-режим ${enabled ? 'включён' : 'выключен'}`);
+            } catch (err) {
+                showToast(`Ошибка: ${err.message}`, true);
+                const toggle = document.getElementById('autoModeToggle');
+                if (toggle) toggle.checked = !enabled;
+            }
+        }
+
+        function updateAutoModeIndicator(enabled) {
+            const indicator = document.getElementById('autoModeStatus');
+            if (indicator) {
+                indicator.textContent = enabled ? 'вкл' : 'выкл';
+                indicator.style.color = enabled ? '#28a745' : '#dc3545';
+            }
         }
 
         async function loadCountries() {
@@ -554,6 +600,7 @@
                 document.getElementById('authPanel').style.display = 'none';
                 document.getElementById('mainContent').style.display = 'block';
                 showToast('Добро пожаловать!');
+                await loadAutoModeStatus();
                 await loadOrders();
             } catch (err) {
                 errDiv.textContent = err.message;
@@ -569,15 +616,18 @@
                 orders = data.orders;
                 const tbody = document.getElementById('ordersList');
                 if (orders.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></td>';
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
                 } else {
                     tbody.innerHTML = orders.map((order, i) => {
                         const price = calcPrice(order);
                         const hasIssues = order.products.some(p => p.is_mandatory_marked || p.is_gtd_required || p.is_country_required);
                         const totalQuantity = order.products.reduce((sum, p) => sum + p.quantity, 0);
+                        const isFolderReady = order.is_folder_ready || false;
+                        const rowClass = isFolderReady ? 'order-row folder-ready' : (hasIssues ? 'order-row has-issues' : 'order-row');
+                        const disabledAttr = (hasIssues || isFolderReady) ? 'disabled' : '';
                         return `
-                            <tr class="order-row ${hasIssues ? 'has-issues' : ''}" data-posting-number="${order.posting_number}">
-                                <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${hasIssues ? 'disabled' : ''}></td>
+                            <tr class="${rowClass}" data-posting-number="${order.posting_number}">
+                                <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
                                 <td class="posting-number">${escapeHtml(order.posting_number)}</td>
                                 <td class="status-cell"><span class="status-badge status-${order.status}">${getStatusText(order.status)}</span></td>
                                 <td class="products-cell">
@@ -600,9 +650,10 @@
                                         `;
                                     }).join('')}
                                 </td>
+                                <td class="offerid-cell">${order.products.map(p => `<div class="offerid-item">${escapeHtml(p.offer_id || '-')}</div>`).join('')}</td>
                                 <td class="quantity-cell"><span class="quantity-value">${totalQuantity}</span></td>
                                 <td class="price-cell">${price.toLocaleString('ru-RU')} ₽</td>
-                                <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${hasIssues ? 'disabled' : ''}></td>
+                                <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
                             </tr>
                         `;
                     }).join('');
@@ -771,8 +822,6 @@
                         ok++;
                         if (r.shipments && r.shipments.length) {
                             allShipments.push(...r.shipments);
-                        } else {
-                            console.warn('Нет shipments в ответе для заказа:', r.posting_number);
                         }
                     } else {
                         err++;
@@ -894,6 +943,7 @@
                 document.getElementById('authPanel').style.display = 'none';
                 document.getElementById('mainContent').style.display = 'block';
                 updateAvailableCodes();
+                await loadAutoModeStatus();
                 loadOrders();
             }
             
@@ -909,6 +959,11 @@
             document.getElementById('markingCancelBtn').onclick = closeAllModals;
             document.getElementById('countryConfirmBtn').onclick = setCountry;
             document.getElementById('countryCancelBtn').onclick = closeAllModals;
+            
+            const autoToggle = document.getElementById('autoModeToggle');
+            if (autoToggle) {
+                autoToggle.onchange = (e) => toggleAutoMode(e.target.checked);
+            }
             
             const searchInput = document.getElementById('countrySearchInput');
             if (searchInput) searchInput.addEventListener('input', (e) => filterCountries(e.target.value));
