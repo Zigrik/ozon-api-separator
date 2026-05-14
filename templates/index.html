@@ -21,19 +21,38 @@
         <div id="mainContent" style="display:none;">
             <div class="header-top">
                 <div class="cabinet-buttons">
-                    <button class="cabinet-btn" data-cabinet="shinorama">Шинорама</button>
-                    <button class="cabinet-btn" data-cabinet="trecktrack">TreckTrack</button>
-                    <button class="cabinet-btn" data-cabinet="sevenhundredshin">700shin</button>
+                    <div class="cabinet-item">
+                        <button class="cabinet-btn" data-cabinet="shinorama">Шинорама</button>
+                        <div class="cabinet-auto-control">
+                            <label class="switch-small">
+                                <input type="checkbox" id="autoModeToggle_shinorama" data-cabinet="shinorama">
+                                <span class="slider-small round"></span>
+                            </label>
+                            <span id="autoModeStatus_shinorama" class="auto-mode-indicator-small">выкл</span>
+                        </div>
+                    </div>
+                    <div class="cabinet-item">
+                        <button class="cabinet-btn" data-cabinet="trecktrack">TreckTrack</button>
+                        <div class="cabinet-auto-control">
+                            <label class="switch-small">
+                                <input type="checkbox" id="autoModeToggle_trecktrack" data-cabinet="trecktrack">
+                                <span class="slider-small round"></span>
+                            </label>
+                            <span id="autoModeStatus_trecktrack" class="auto-mode-indicator-small">выкл</span>
+                        </div>
+                    </div>
+                    <div class="cabinet-item">
+                        <button class="cabinet-btn" data-cabinet="sevenhundredshin">700shin</button>
+                        <div class="cabinet-auto-control">
+                            <label class="switch-small">
+                                <input type="checkbox" id="autoModeToggle_sevenhundredshin" data-cabinet="sevenhundredshin">
+                                <span class="slider-small round"></span>
+                            </label>
+                            <span id="autoModeStatus_sevenhundredshin" class="auto-mode-indicator-small">выкл</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="header-controls">
-                    <div class="auto-mode-control">
-                        <span class="auto-mode-label">🤖 Авто-режим</span>
-                        <label class="switch">
-                            <input type="checkbox" id="autoModeToggle">
-                            <span class="slider round"></span>
-                        </label>
-                        <span id="autoModeStatus" class="auto-mode-indicator">выкл</span>
-                    </div>
                     <div id="labelStatus" class="label-status" style="display:none;">
                         <span id="labelStatusText"></span>
                         <span id="labelProgress"></span>
@@ -63,7 +82,7 @@
                     <div class="action-buttons">
                         <button id="loadOrdersBtn" class="primary-btn">📦 Загрузить заказы</button>
                         <button id="splitOrdersBtn" class="split-btn">✂️ Разделить заказы</button>
-                        <button id="generateLabelsBtn" class="label-btn">🏷️ Разделить и скачать марки</button>
+                        <button id="generateLabelsBtn" class="label-btn">🏷️ Разделить и скачать этикетки</button>
                     </div>
                 </div>
                 
@@ -101,13 +120,14 @@
                     <div class="action-buttons-bottom">
                         <button id="loadOrdersBtnBottom" class="primary-btn">📦 Загрузить заказы</button>
                         <button id="splitOrdersBtnBottom" class="split-btn">✂️ Разделить заказы</button>
-                        <button id="generateLabelsBtnBottom" class="label-btn">🏷️ Разделить и скачать марки</button>
+                        <button id="generateLabelsBtnBottom" class="label-btn">🏷️ Разделить и скачать этикетки</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Модальное окно для маркировки и ГТД -->
     <div id="markingModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -125,6 +145,7 @@
         </div>
     </div>
 
+    <!-- Модальное окно для страны производителя -->
     <div id="countryModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -148,7 +169,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.8.0 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.8.1 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -165,6 +186,12 @@
         
         let currentLabelJobId = null;
         let labelStatusInterval = null;
+        
+        let cabinetNames = {
+            shinorama: 'Шинорама',
+            trecktrack: 'TreckTrack',
+            sevenhundredshin: '700shin'
+        };
 
         function showToast(msg, isErr = false) {
             const toast = document.getElementById('toast');
@@ -235,38 +262,42 @@
             return res.json();
         }
 
-        // ==================== АВТО-РЕЖИМ ====================
+        // ==================== АВТО-РЕЖИМ ДЛЯ КАЖДОГО КАБИНЕТА ====================
         async function loadAutoModeStatus() {
             try {
                 const data = await apiRequest('/api/auto-mode/status');
-                const toggle = document.getElementById('autoModeToggle');
-                if (toggle) toggle.checked = data.enabled;
-                updateAutoModeIndicator(data.enabled);
+                const cabinetsStatus = data.cabinets || {};
+                for (const cabinet of Object.keys(cabinetNames)) {
+                    const enabled = cabinetsStatus[cabinet] || false;
+                    const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
+                    if (toggle) toggle.checked = enabled;
+                    updateAutoModeIndicator(cabinet, enabled);
+                }
             } catch (err) {
                 console.error('Ошибка загрузки статуса авто-режима:', err);
             }
         }
 
-        async function toggleAutoMode(enabled) {
-            try {
-                await apiRequest('/api/auto-mode/toggle', {
-                    method: 'POST',
-                    body: JSON.stringify({ enabled })
-                });
-                updateAutoModeIndicator(enabled);
-                showToast(`Авто-режим ${enabled ? 'включён' : 'выключен'}`);
-            } catch (err) {
-                showToast(`Ошибка: ${err.message}`, true);
-                const toggle = document.getElementById('autoModeToggle');
-                if (toggle) toggle.checked = !enabled;
-            }
-        }
-
-        function updateAutoModeIndicator(enabled) {
-            const indicator = document.getElementById('autoModeStatus');
+        function updateAutoModeIndicator(cabinet, enabled) {
+            const indicator = document.getElementById(`autoModeStatus_${cabinet}`);
             if (indicator) {
                 indicator.textContent = enabled ? 'вкл' : 'выкл';
                 indicator.style.color = enabled ? '#28a745' : '#dc3545';
+            }
+        }
+
+        async function toggleAutoMode(cabinet, enabled) {
+            try {
+                await apiRequest('/api/auto-mode/toggle', {
+                    method: 'POST',
+                    body: JSON.stringify({ cabinet, enabled })
+                });
+                updateAutoModeIndicator(cabinet, enabled);
+                showToast(`Авто-режим для кабинета ${cabinetNames[cabinet]} ${enabled ? 'включён' : 'выключен'}`);
+            } catch (err) {
+                showToast(`Ошибка: ${err.message}`, true);
+                const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
+                if (toggle) toggle.checked = !enabled;
             }
         }
 
@@ -623,7 +654,9 @@
                         const hasIssues = order.products.some(p => p.is_mandatory_marked || p.is_gtd_required || p.is_country_required);
                         const totalQuantity = order.products.reduce((sum, p) => sum + p.quantity, 0);
                         const isFolderReady = order.is_folder_ready || false;
-                        const rowClass = isFolderReady ? 'order-row folder-ready' : (hasIssues ? 'order-row has-issues' : 'order-row');
+                        let rowClass = 'order-row';
+                        if (isFolderReady) rowClass += ' folder-ready';
+                        if (hasIssues && !isFolderReady) rowClass += ' has-issues';
                         const disabledAttr = (hasIssues || isFolderReady) ? 'disabled' : '';
                         return `
                             <tr class="${rowClass}" data-posting-number="${order.posting_number}">
@@ -654,7 +687,7 @@
                                 <td class="quantity-cell"><span class="quantity-value">${totalQuantity}</span></td>
                                 <td class="price-cell">${price.toLocaleString('ru-RU')} ₽</td>
                                 <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
-                            </tr>
+                            <table>
                         `;
                     }).join('');
                 }
@@ -739,35 +772,53 @@
                 showToast('Выберите заказы', true);
                 return;
             }
+            
             const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
             const toShip = [];
+            
             for (const num of numbers) {
                 const order = orders.find(o => o.posting_number === num);
                 if (order && order.status === 'awaiting_packaging') {
+                    // Исключаем товары с маркировкой и ГТД
                     const valid = order.products.filter(p => !p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required);
                     if (valid.length) {
                         toShip.push({
                             posting_number: num,
                             products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
                         });
+                    } else {
+                        console.log(`Заказ ${num} не содержит товаров для отправки (все требуют маркировку/ГТД/страну)`);
                     }
                 }
             }
+            
             if (toShip.length === 0) {
-                showToast('Нет заказов для отправки', true);
+                showToast('Нет заказов для отправки (проверьте требования)', true);
                 return;
             }
+            
+            console.log('Отправка заказов:', toShip);
+            
             showOverlay();
             try {
                 const data = await apiRequest('/api/orders/ship', {
                     method: 'POST',
                     body: JSON.stringify({ orders: toShip })
                 });
+                
                 let ok = 0, err = 0;
                 data.results.forEach(r => {
-                    if (r.status === 'success') { ok++; showToast(r.message); }
-                    else { err++; showToast(`Ошибка: ${r.error}`, true); }
+                    if (r.status === 'success') {
+                        ok++;
+                        showToast(r.message);
+                        console.log(`Успешно: ${r.posting_number} -> отправления:`, r.shipments);
+                    } else {
+                        err++;
+                        console.error(`Ошибка: ${r.posting_number} - ${r.error}`);
+                        showToast(`Ошибка: ${r.error}`, true);
+                    }
                 });
+                
                 showToast(`✅${ok} ${err ? `❌${err}` : ''}`);
                 setTimeout(async () => {
                     hideOverlay();
@@ -775,6 +826,7 @@
                 }, 2000);
             } catch (err) {
                 hideOverlay();
+                console.error('Ошибка в splitOrders:', err);
                 if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
             }
         }
@@ -919,11 +971,21 @@
             try {
                 const colors = { shinorama: '#e8f5e9', trecktrack: '#fff9c4', sevenhundredshin: '#ffebee' };
                 const names = { shinorama: 'Шинорама', trecktrack: 'TreckTrack', sevenhundredshin: '700shin' };
+                
                 document.body.setAttribute('data-cabinet', cabinet);
                 document.body.style.backgroundColor = colors[cabinet];
+                
                 await apiRequest('/api/cabinet/switch', { method: 'POST', body: JSON.stringify({ cabinet }) });
+                
                 const activeSpan = document.getElementById('activeCabinet');
                 if (activeSpan) activeSpan.textContent = names[cabinet];
+                
+                // Обновляем активный класс на кнопках
+                document.querySelectorAll('.cabinet-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelector(`.cabinet-btn[data-cabinet="${cabinet}"]`).classList.add('active');
+                
                 showToast(`Переключено на ${names[cabinet]}`);
                 document.getElementById('ordersContainer').style.display = 'none';
                 document.getElementById('ordersList').innerHTML = '';
@@ -960,9 +1022,12 @@
             document.getElementById('countryConfirmBtn').onclick = setCountry;
             document.getElementById('countryCancelBtn').onclick = closeAllModals;
             
-            const autoToggle = document.getElementById('autoModeToggle');
-            if (autoToggle) {
-                autoToggle.onchange = (e) => toggleAutoMode(e.target.checked);
+            // Привязка для авто-режима каждого кабинета
+            for (const cabinet of Object.keys(cabinetNames)) {
+                const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
+                if (toggle) {
+                    toggle.onchange = (e) => toggleAutoMode(cabinet, e.target.checked);
+                }
             }
             
             const searchInput = document.getElementById('countrySearchInput');

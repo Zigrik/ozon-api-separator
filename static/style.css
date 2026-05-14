@@ -81,6 +81,67 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     flex-wrap: wrap;
 }
 
+.cabinet-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f0f0f0;
+    padding: 5px 12px;
+    border-radius: 30px;
+}
+
+.cabinet-auto-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cabinet-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    color: #333;
+}
+
+.cabinet-btn[data-cabinet="shinorama"] {
+    background-color: #c8e6c9;
+    color: #2e7d32;
+}
+
+.cabinet-btn[data-cabinet="shinorama"]:hover {
+    background-color: #a5d6a7;
+    transform: translateY(-1px);
+}
+
+.cabinet-btn[data-cabinet="trecktrack"] {
+    background-color: #ffecb3;
+    color: #f57c00;
+}
+
+.cabinet-btn[data-cabinet="trecktrack"]:hover {
+    background-color: #ffe082;
+    transform: translateY(-1px);
+}
+
+.cabinet-btn[data-cabinet="sevenhundredshin"] {
+    background-color: #ffcdd2;
+    color: #c62828;
+}
+
+.cabinet-btn[data-cabinet="sevenhundredshin"]:hover {
+    background-color: #ef9a9a;
+    transform: translateY(-1px);
+}
+
+.cabinet-btn.active {
+    font-weight: 700;
+    box-shadow: inset 0 -2px 0 currentColor;
+}
+
 .header-top {
     display: flex;
     justify-content: space-between;
@@ -96,27 +157,6 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     gap: 20px;
     flex-wrap: wrap;
 }
-
-.cabinet-btn {
-    padding: 10px 20px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.3s ease;
-    background-color: #e0e0e0;
-    color: #333;
-}
-
-.cabinet-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.cabinet-btn[data-cabinet="shinorama"]:hover { background-color: #c8e6c9; }
-.cabinet-btn[data-cabinet="trecktrack"]:hover { background-color: #ffecb3; }
-.cabinet-btn[data-cabinet="sevenhundredshin"]:hover { background-color: #ffcdd2; }
 
 .content {
     background: white;
@@ -236,9 +276,14 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
 .order-row:hover { background-color: #f8f9fa !important; }
 .order-row.selected { background-color: #e3f2fd !important; }
 .order-row.selected:hover { background-color: #bbdef5 !important; }
-.order-row.has-issues { opacity: 0.9; }
-.order-row.folder-ready { background-color: #e9ecef !important; opacity: 0.7; }
-.order-row.folder-ready:hover { background-color: #dee2e6 !important; }
+.order-row.has-issues { background-color: #ffebee !important; opacity: 1; }
+.order-row.folder-ready { 
+    background-color: #fff9c4 !important; 
+    opacity: 1;
+}
+.order-row.folder-ready:hover { 
+    background-color: #fff59d !important; 
+}
 
 .posting-number {
     font-family: monospace;
@@ -277,11 +322,12 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     white-space: nowrap;
     vertical-align: middle;
     font-family: monospace;
-    font-size: 12px;
-    color: #666;
+    font-size: 15px;
+    color: #555;
+    font-weight: normal;
 }
 .offerid-item {
-    padding: 2px 0;
+    padding: 4px 0;
 }
 
 .quantity-cell { text-align: center; width: 80px; }
@@ -450,37 +496,19 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
 .app-footer .version { font-weight: 600; color: #333; font-family: monospace; }
 .app-footer .slogan { color: #f57c00; font-style: italic; font-weight: 500; }
 
-/* Toggle Switch для авто-режима */
-.auto-mode-control {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: #f8f9fa;
-    padding: 5px 12px;
-    border-radius: 30px;
-}
-.auto-mode-label {
-    font-size: 13px;
-    font-weight: 500;
-    color: #333;
-}
-.auto-mode-indicator {
-    font-size: 12px;
-    font-weight: 600;
-    min-width: 35px;
-}
-.switch {
+/* Toggle Switch для авто-режима кабинета */
+.switch-small {
     position: relative;
     display: inline-block;
-    width: 50px;
-    height: 24px;
+    width: 36px;
+    height: 20px;
 }
-.switch input {
+.switch-small input {
     opacity: 0;
     width: 0;
     height: 0;
 }
-.slider {
+.slider-small {
     position: absolute;
     cursor: pointer;
     top: 0;
@@ -489,27 +517,29 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     bottom: 0;
     background-color: #ccc;
     transition: 0.3s;
-    border-radius: 24px;
+    border-radius: 20px;
 }
-.slider:before {
+.slider-small:before {
     position: absolute;
     content: "";
-    height: 18px;
-    width: 18px;
+    height: 14px;
+    width: 14px;
     left: 3px;
     bottom: 3px;
     background-color: white;
     transition: 0.3s;
     border-radius: 50%;
 }
-input:checked + .slider {
+input:checked + .slider-small {
     background-color: #28a745;
 }
-input:checked + .slider:before {
-    transform: translateX(26px);
+input:checked + .slider-small:before {
+    transform: translateX(16px);
 }
-.slider.round {
-    border-radius: 24px;
+.auto-mode-indicator-small {
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 30px;
 }
 
 .label-status {
@@ -550,13 +580,16 @@ input:checked + .slider:before {
     .action-buttons, .action-buttons-bottom { flex-direction: column; align-items: center; }
     .header-top { flex-direction: column; align-items: stretch; }
     .header-controls { justify-content: space-between; }
+    .cabinet-buttons { justify-content: center; }
+    .cabinet-item { padding: 4px 8px; }
+    .cabinet-btn { padding: 6px 12px; font-size: 12px; }
     .orders-table { font-size: 13px; }
     .orders-table th, .orders-table td { padding: 2px 4px; }
     .checkbox-cell { width: 28px; padding: 2px 2px !important; }
     .checkbox-cell input[type="checkbox"] { width: 14px; height: 14px; }
     .posting-number { font-size: 12px; }
     .product-name { font-size: 12px; }
-    .offerid-cell { font-size: 10px; }
+    .offerid-cell { font-size: 12px; }
     .quantity-value { font-size: 13px; padding: 2px 6px; min-width: 40px; }
     .price-cell { font-size: 14px; width: 80px; }
     .status-badge { font-size: 11px; padding: 3px 8px; }
@@ -572,7 +605,7 @@ input:checked + .slider:before {
     .orders-table td { padding: 3px 12px; }
     .posting-number { font-size: 16px; }
     .product-name { font-size: 15px; }
-    .offerid-cell { font-size: 14px; }
+    .offerid-cell { font-size: 16px; }
     .quantity-value { font-size: 17px; padding: 4px 12px; }
     .price-cell { font-size: 18px; }
     .status-badge { font-size: 14px; padding: 5px 12px; }
