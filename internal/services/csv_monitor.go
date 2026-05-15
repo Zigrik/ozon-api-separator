@@ -81,6 +81,25 @@ func StartCSVWorkerForCabinet(cab *models.CabinetConfig) {
 }
 
 func processAutoMode(cab *models.CabinetConfig, basePath string) {
+	// Получаем актуальный список заказов
+	orders, err := GetAwaitingPackagingOrders(cab)
+	if err != nil {
+		log.Printf("⚠️ Авто-режим: ошибка получения списка заказов: %v", err)
+		return
+	}
+
+	// Создаём карту существующих заказов
+	existingOrders := make(map[string]bool)
+	for _, order := range orders {
+		existingOrders[order.PostingNumber] = true
+		// Также добавляем префикс (без последнего дефиса)
+		parts := strings.Split(order.PostingNumber, "-")
+		if len(parts) > 1 {
+			prefix := strings.Join(parts[:len(parts)-1], "-")
+			existingOrders[prefix] = true
+		}
+	}
+
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
 		return
@@ -93,6 +112,11 @@ func processAutoMode(cab *models.CabinetConfig, basePath string) {
 
 		folderName := e.Name()
 		folderPath := filepath.Join(basePath, folderName)
+
+		// Проверяем, существует ли заказ с таким префиксом
+		if !existingOrders[folderName] {
+			continue
+		}
 
 		processedOrders.RLock()
 		alreadyProcessed := processedOrders.items[folderName]
@@ -120,7 +144,6 @@ func processAutoMode(cab *models.CabinetConfig, basePath string) {
 func checkIfOrderRequiresMarking(cab *models.CabinetConfig, orderPrefix string) bool {
 	orders, err := GetAwaitingPackagingOrders(cab)
 	if err != nil {
-		log.Printf("⚠️ Ошибка получения списка заказов: %v", err)
 		return false
 	}
 
@@ -138,10 +161,11 @@ func checkIfOrderRequiresMarking(cab *models.CabinetConfig, orderPrefix string) 
 	return false
 }
 
+// Авто-режим: заказ без маркировки (делим и заказываем этикетки)
 func processOrderWithoutMarking(cab *models.CabinetConfig, orderPrefix, folderPath string) {
 	orders, err := GetAwaitingPackagingOrders(cab)
 	if err != nil {
-		log.Printf("❌ Ошибка получения списка заказов: %v", err)
+		log.Printf("❌ Авто-режим: ошибка получения списка заказов: %v", err)
 		return
 	}
 
@@ -153,54 +177,28 @@ func processOrderWithoutMarking(cab *models.CabinetConfig, orderPrefix, folderPa
 			break
 		}
 	}
+
 	if targetOrder == nil {
-		log.Printf("⚠️ Заказ с префиксом %s не найден в актуальном списке", orderPrefix)
 		return
 	}
 
 	log.Printf("📦 Авто-режим: обработка заказа %s, товаров: %d", targetOrder.PostingNumber, len(targetOrder.Products))
 
-	type shipItem struct {
-		ProductID int64
-		Quantity  int
-		Name      string
-	}
-	var toShip []shipItem
-
+	// Формируем упаковки
+	packages := make([]ShipPackage, 0)
 	for _, p := range targetOrder.Products {
 		productID := p.ProductID
 		if productID == 0 {
 			productID = p.SKU
-			log.Printf("⚠️ Авто-режим: ProductID для товара '%s' был 0, используем SKU %d", p.Name, productID)
 		}
-
 		if productID == 0 {
-			log.Printf("❌ Авто-режим: товар '%s' имеет ProductID=0 и SKU=0, пропускаем", p.Name)
 			continue
 		}
-
-		toShip = append(toShip, shipItem{
-			ProductID: productID,
-			Quantity:  p.Quantity,
-			Name:      p.Name,
-		})
-
-		log.Printf("📦 Авто-режим: товар '%s' (ProductID=%d, SKU=%d) кол-во=%d",
-			p.Name, productID, p.SKU, p.Quantity)
-	}
-
-	if len(toShip) == 0 {
-		log.Printf("⚠️ Авто-режим: нет товаров с корректным ProductID для заказа %s", targetOrder.PostingNumber)
-		return
-	}
-
-	packages := make([]ShipPackage, 0)
-	for _, p := range toShip {
 		for i := 0; i < p.Quantity; i++ {
 			packages = append(packages, ShipPackage{
 				Products: []ShipProduct{
 					{
-						ProductID: p.ProductID,
+						ProductID: productID,
 						Quantity:  1,
 					},
 				},
@@ -208,26 +206,25 @@ func processOrderWithoutMarking(cab *models.CabinetConfig, orderPrefix, folderPa
 		}
 	}
 
-	log.Printf("📦 Авто-режим: создано %d упаковок для заказа %s", len(packages), targetOrder.PostingNumber)
+	if len(packages) == 0 {
+		log.Printf("⚠️ Авто-режим: нет товаров для заказа %s", targetOrder.PostingNumber)
+		return
+	}
 
+	// Делим заказ и получаем ПОДЗАКАЗЫ
 	shipments, err := ShipOrder(cab, targetOrder.PostingNumber, packages)
 	if err != nil {
 		log.Printf("❌ Авто-режим: ошибка разделения заказа %s: %v", targetOrder.PostingNumber, err)
-
-		productsLog := make([]string, len(targetOrder.Products))
-		for i, p := range targetOrder.Products {
-			productsLog[i] = fmt.Sprintf("%s (x%d)", p.Name, p.Quantity)
-		}
-		WriteToLog(orderPrefix, productsLog, nil, nil, false, false, err.Error())
 		return
 	}
 
 	log.Printf("✅ Авто-режим: заказ %s разделён на %d отправлений", targetOrder.PostingNumber, len(shipments))
 
-	// Ждём 10 секунд перед созданием задач на этикетки
-	log.Printf("⏳ Ожидание 10 секунд перед созданием задач на этикетки...")
-	time.Sleep(10 * time.Second)
+	// Ждём 5 секунд перед заказом этикеток
+	log.Printf("⏳ Ожидание 5 секунд перед заказом этикеток...")
+	time.Sleep(5 * time.Second)
 
+	// Запускаем ProcessLabelJob для ПОДЗАКАЗОВ
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
 	queue := GetLabelQueue()
 	queue.Lock()
@@ -236,20 +233,18 @@ func processOrderWithoutMarking(cab *models.CabinetConfig, orderPrefix, folderPa
 	queue.Total[jobID] = len(shipments)
 	queue.Progress[jobID] = 0
 	queue.StartTime[jobID] = time.Now()
+	queue.Errors[jobID] = ""
+	queue.FailedItems[jobID] = []string{}
 	queue.Unlock()
-	go ProcessLabelJob(jobID, queue)
 
-	productsLog := make([]string, len(targetOrder.Products))
-	for i, p := range targetOrder.Products {
-		productsLog[i] = fmt.Sprintf("%s (x%d)", p.Name, p.Quantity)
-	}
-	WriteToLog(orderPrefix, productsLog, shipments, nil, false, true, "")
+	ProcessLabelJob(jobID, queue)
 
 	processedOrders.Lock()
 	processedOrders.items[orderPrefix] = true
 	processedOrders.Unlock()
 }
 
+// Авто-режим: заказ с маркировкой (ждём CSV файл)
 func processMarkingRequiredOrder(cab *models.CabinetConfig, orderPrefix, folderPath string) {
 	files, err := os.ReadDir(folderPath)
 	if err != nil {
@@ -353,6 +348,7 @@ func processCSVFile(cab *models.CabinetConfig, orderPrefix, folderPath, csvPath 
 
 	log.Printf("📦 Авто-режим: обработка заказа %s, товаров: %d", targetOrder.PostingNumber, len(targetOrder.Products))
 
+	// Сопоставляем марки с товарами
 	type appliedMark struct {
 		OfferID string
 		Code    string
@@ -365,14 +361,10 @@ func processCSVFile(cab *models.CabinetConfig, orderPrefix, folderPath, csvPath 
 				productID := prod.ProductID
 				if productID == 0 {
 					productID = prod.SKU
-					log.Printf("⚠️ Авто-режим: ProductID для товара '%s' был 0, используем SKU %d", prod.Name, productID)
 				}
-
 				if productID == 0 {
-					log.Printf("❌ Авто-режим: товар '%s' имеет ProductID=0 и SKU=0, пропускаем", prod.Name)
 					continue
 				}
-
 				if err := AddMarkingsForOrder(cab, targetOrder.PostingNumber, productID, 1, []string{item.Code}); err != nil {
 					log.Printf("❌ Авто-режим: ошибка добавления марки %s для заказа %s: %v", item.Code, targetOrder.PostingNumber, err)
 				} else {
@@ -389,10 +381,8 @@ func processCSVFile(cab *models.CabinetConfig, orderPrefix, folderPath, csvPath 
 		return
 	}
 
-	var toShip []struct {
-		ProductID int64
-		Quantity  int
-	}
+	// Формируем упаковки для отправки
+	packages := make([]ShipPackage, 0)
 	for _, p := range targetOrder.Products {
 		productID := p.ProductID
 		if productID == 0 {
@@ -401,24 +391,11 @@ func processCSVFile(cab *models.CabinetConfig, orderPrefix, folderPath, csvPath 
 		if productID == 0 {
 			continue
 		}
-		toShip = append(toShip, struct {
-			ProductID int64
-			Quantity  int
-		}{ProductID: productID, Quantity: p.Quantity})
-	}
-
-	if len(toShip) == 0 {
-		log.Printf("⚠️ Авто-режим: нет товаров для отправки в заказе %s", targetOrder.PostingNumber)
-		return
-	}
-
-	packages := make([]ShipPackage, 0)
-	for _, p := range toShip {
 		for i := 0; i < p.Quantity; i++ {
 			packages = append(packages, ShipPackage{
 				Products: []ShipProduct{
 					{
-						ProductID: p.ProductID,
+						ProductID: productID,
 						Quantity:  1,
 					},
 				},
@@ -426,26 +403,25 @@ func processCSVFile(cab *models.CabinetConfig, orderPrefix, folderPath, csvPath 
 		}
 	}
 
-	log.Printf("📦 Авто-режим: создано %d упаковок для заказа %s", len(packages), targetOrder.PostingNumber)
+	if len(packages) == 0 {
+		log.Printf("⚠️ Авто-режим: нет товаров для отправки в заказе %s", targetOrder.PostingNumber)
+		return
+	}
 
+	// Делим заказ и получаем ПОДЗАКАЗЫ
 	shipments, err := ShipOrder(cab, targetOrder.PostingNumber, packages)
 	if err != nil {
 		log.Printf("❌ Авто-режим: ошибка разделения заказа %s: %v", targetOrder.PostingNumber, err)
-
-		productsLog := make([]string, len(targetOrder.Products))
-		for i, p := range targetOrder.Products {
-			productsLog[i] = fmt.Sprintf("%s (x%d)", p.OfferID, p.Quantity)
-		}
-		marksLog := make([]string, len(appliedMarks))
-		for i, m := range appliedMarks {
-			marksLog[i] = m.Code
-		}
-		WriteToLog(orderPrefix, productsLog, nil, marksLog, false, false, err.Error())
 		return
 	}
 
 	log.Printf("✅ Авто-режим: заказ %s разделён на %d отправлений", targetOrder.PostingNumber, len(shipments))
 
+	// Ждём 5 секунд перед заказом этикеток
+	log.Printf("⏳ Ожидание 5 секунд перед заказом этикеток...")
+	time.Sleep(5 * time.Second)
+
+	// Запускаем ProcessLabelJob для ПОДЗАКАЗОВ
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
 	queue := GetLabelQueue()
 	queue.Lock()
@@ -454,19 +430,13 @@ func processCSVFile(cab *models.CabinetConfig, orderPrefix, folderPath, csvPath 
 	queue.Total[jobID] = len(shipments)
 	queue.Progress[jobID] = 0
 	queue.StartTime[jobID] = time.Now()
+	queue.Errors[jobID] = ""
+	queue.FailedItems[jobID] = []string{}
 	queue.Unlock()
-	go ProcessLabelJob(jobID, queue)
 
-	productsLog := make([]string, len(targetOrder.Products))
-	for i, p := range targetOrder.Products {
-		productsLog[i] = fmt.Sprintf("%s (x%d)", p.OfferID, p.Quantity)
-	}
-	marksLog := make([]string, len(appliedMarks))
-	for i, m := range appliedMarks {
-		marksLog[i] = m.Code
-	}
-	WriteToLog(orderPrefix, productsLog, shipments, marksLog, true, true, "")
+	ProcessLabelJob(jobID, queue)
 
+	// Удаляем обработанные строки из CSV
 	processedSet := make(map[string]bool)
 	for _, item := range validItems {
 		key := item.OrderNumber + "|" + item.OfferID + "|" + item.Code

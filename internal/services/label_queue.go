@@ -56,20 +56,14 @@ func GetLabelByTaskIDWithRetry(cab *models.CabinetConfig, taskID int64, postingN
 	retryDelay := 2 * time.Second
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		log.Printf("📥 Попытка %d/%d: получение этикетки для заказа %s (task_id=%d)", attempt, maxRetries, postingNumber, taskID)
-
 		content, err := getLabelByTaskID(cab, taskID)
 		if err == nil {
 			return content, nil
 		}
-
-		log.Printf("⚠️ Ошибка получения этикетки (попытка %d/%d): %v", attempt, maxRetries, err)
-
 		if attempt < maxRetries {
 			time.Sleep(retryDelay)
 		}
 	}
-
 	return nil, fmt.Errorf("не удалось получить этикетку для заказа %s после %d попыток", postingNumber, maxRetries)
 }
 
@@ -97,6 +91,8 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 	queue.Status[jobID] = "processing"
 	queue.Unlock()
 
+	log.Printf("📦 ProcessLabelJob: начата обработка %d подзаказов", total)
+
 	if total == 0 {
 		queue.Lock()
 		queue.Status[jobID] = "completed"
@@ -107,83 +103,18 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 	cab := config.GetActiveConfig()
 	dataPath := config.GetDataPathForCabinet(cab.Key)
 
-	// Ждём 10 секунд после разделения заказа
-	log.Printf("⏳ Ожидание 10 секунд перед проверкой статуса...")
-	time.Sleep(10 * time.Second)
+	log.Printf("⏳ Ожидание 5 секунд перед созданием задач...")
+	time.Sleep(5 * time.Second)
 
-	// Проверяем, что все заказы перешли в статус awaiting_deliver
-	log.Printf("🔍 Проверка статуса %d заказов...", len(orders))
-	readyOrders := make([]string, 0)
-
-	for _, order := range orders {
-		for attempt := 1; attempt <= 10; attempt++ {
-			deliveredOrders, err := GetOrdersByStatus(cab, "awaiting_deliver")
-			if err != nil {
-				log.Printf("⚠️ Ошибка получения списка awaiting_deliver: %v", err)
-				time.Sleep(3 * time.Second)
-				continue
-			}
-
-			found := false
-			for _, o := range deliveredOrders {
-				if o.PostingNumber == order {
-					readyOrders = append(readyOrders, order)
-					log.Printf("✅ Заказ %s готов к скачиванию этикетки (статус awaiting_deliver)", order)
-					found = true
-					break
-				}
-			}
-
-			if found {
-				break
-			}
-
-			if attempt < 10 {
-				log.Printf("⏳ Заказ %s ещё не в статусе awaiting_deliver, ожидание 3 секунды... (попытка %d/10)", order, attempt)
-				time.Sleep(3 * time.Second)
-			} else {
-				log.Printf("⚠️ Заказ %s не перешёл в статус awaiting_deliver после 10 попыток", order)
-			}
-		}
-	}
-
-	if len(readyOrders) == 0 {
-		log.Printf("❌ Ни один заказ не готов к скачиванию этикеток")
-		queue.Lock()
-		queue.Status[jobID] = "error"
-		queue.Errors[jobID] = "Нет заказов в статусе awaiting_deliver"
-		queue.Unlock()
-		return
-	}
-
-	log.Printf("📦 Готово к скачиванию: %d из %d заказов", len(readyOrders), len(orders))
-
-	// Получаем информацию о заказах для логирования названий товаров
-	ordersInfo := make(map[string]*models.Posting)
-	allOrders, err := GetAwaitingPackagingOrders(cab)
-	if err == nil {
-		for _, order := range allOrders {
-			ordersInfo[order.PostingNumber] = &order
-		}
-	}
-
-	deliveredOrders, err := GetOrdersByStatus(cab, "awaiting_deliver")
-	if err == nil {
-		for _, order := range deliveredOrders {
-			if _, exists := ordersInfo[order.PostingNumber]; !exists {
-				ordersInfo[order.PostingNumber] = &order
-			}
-		}
-	}
-
-	// ШАГ 1: Создаём все задачи (параллельно)
-	log.Printf("📦 Шаг 1: создание %d задач на этикетки...", len(readyOrders))
+	// Создаём задачи
+	log.Printf("📦 Создание %d задач на этикетки...", total)
 	tasks := make(map[string]int64)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, 5)
+	var failedOrders []string
 
-	for _, order := range readyOrders {
+	for _, order := range orders {
 		wg.Add(1)
 		go func(o string) {
 			defer wg.Done()
@@ -199,15 +130,16 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 				}
 				log.Printf("⚠️ Попытка %d/5 создания задачи для %s: %v", attempt, o, err)
 				if attempt < 5 {
-					time.Sleep(3 * time.Second)
+					time.Sleep(2 * time.Second)
 				}
 			}
-
 			if err != nil {
-				log.Printf("❌ Ошибка создания задачи для %s после 5 попыток: %v", o, err)
+				log.Printf("❌ Не удалось создать задачу для %s: %v", o, err)
+				mu.Lock()
+				failedOrders = append(failedOrders, o)
+				mu.Unlock()
 				return
 			}
-
 			mu.Lock()
 			tasks[o] = taskID
 			mu.Unlock()
@@ -215,39 +147,49 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 		}(order)
 	}
 	wg.Wait()
-	log.Printf("📦 Шаг 1 завершён: создано %d задач", len(tasks))
 
-	// ШАГ 2: Ждём 5 секунд после создания всех задач
-	log.Printf("⏳ Ожидание 5 секунд перед скачиванием...")
-	time.Sleep(5 * time.Second)
+	// Удаляем failed заказы из списка orders
+	var validOrders []string
+	for _, order := range orders {
+		isFailed := false
+		for _, fo := range failedOrders {
+			if fo == order {
+				isFailed = true
+				break
+			}
+		}
+		if !isFailed {
+			validOrders = append(validOrders, order)
+		}
+	}
 
-	// ШАГ 3: Скачиваем все этикетки
-	log.Printf("📦 Шаг 2: скачивание %d этикеток...", len(tasks))
+	log.Printf("✅ Создано %d задач из %d, пропущено %d", len(tasks), total, len(failedOrders))
+
+	if len(validOrders) == 0 {
+		queue.Lock()
+		queue.Status[jobID] = "error"
+		queue.Errors[jobID] = fmt.Sprintf("Не удалось создать задачи для %d заказов", len(failedOrders))
+		queue.Unlock()
+		return
+	}
+
+	log.Printf("⏳ Ожидание 3 секунд перед скачиванием...")
+	time.Sleep(3 * time.Second)
+
+	// Скачиваем этикетки
+	log.Printf("📥 Скачивание %d этикеток...", len(validOrders))
 	completed := 0
+	var downloadedOrders []string
 
-	for _, order := range readyOrders {
+	for _, order := range validOrders {
 		taskID, exists := tasks[order]
 		if !exists {
-			log.Printf("⚠️ Нет task_id для %s, пропускаем", order)
-			completed++
-			queue.Lock()
-			queue.Progress[jobID] = completed
-			queue.Unlock()
 			continue
-		}
-
-		productName := ""
-		if orderInfo, ok := ordersInfo[order]; ok && len(orderInfo.Products) > 0 {
-			productName = orderInfo.Products[0].Name
 		}
 
 		content, err := GetLabelByTaskIDWithRetry(cab, taskID, order)
 		if err != nil {
-			log.Printf("❌ Ошибка получения этикетки для заказа %s (товар: %s): %v", order, productName, err)
-			completed++
-			queue.Lock()
-			queue.Progress[jobID] = completed
-			queue.Unlock()
+			log.Printf("❌ Ошибка получения этикетки для %s: %v", order, err)
 			continue
 		}
 
@@ -257,20 +199,34 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 			folderName = order
 		}
 		fileName := order + ".pdf"
+
 		if err := SaveLabelToFile(dataPath, folderName, fileName, content); err != nil {
-			log.Printf("❌ Ошибка сохранения этикетки для %s (товар: %s): %v", order, productName, err)
+			log.Printf("❌ Ошибка сохранения этикетки для %s: %v", order, err)
 		} else {
-			log.Printf("✅ Этикетка сохранена: %s/%s (товар: %s)", folderName, fileName, productName)
+			log.Printf("✅ Этикетка сохранена: %s/%s", folderName, fileName)
+			downloadedOrders = append(downloadedOrders, order)
 		}
 
 		completed++
 		queue.Lock()
 		queue.Progress[jobID] = completed
 		queue.Unlock()
+		log.Printf("📊 Прогресс: %d/%d", completed, len(validOrders))
 	}
 
 	queue.Lock()
-	queue.Status[jobID] = "completed"
+	if len(downloadedOrders) == len(validOrders) && len(failedOrders) == 0 {
+		queue.Status[jobID] = "completed"
+	} else if len(downloadedOrders) > 0 {
+		queue.Status[jobID] = "partial"
+		queue.Errors[jobID] = fmt.Sprintf("Скачано %d из %d этикеток, пропущено задач: %d", len(downloadedOrders), len(validOrders), len(failedOrders))
+		queue.FailedItems[jobID] = failedOrders
+	} else {
+		queue.Status[jobID] = "error"
+		queue.Errors[jobID] = fmt.Sprintf("Не скачано ни одной этикетки из %d", len(validOrders))
+		queue.FailedItems[jobID] = failedOrders
+	}
 	queue.Unlock()
-	log.Printf("✅ Задача %s завершена: %d/%d этикеток", jobID, completed, len(readyOrders))
+
+	log.Printf("🎉 ProcessLabelJob: завершено. Успешно: %d/%d, Ошибки: %d", len(downloadedOrders), len(validOrders), len(failedOrders))
 }

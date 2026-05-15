@@ -69,15 +69,12 @@ func AddMarkingsForOrder(cab *models.CabinetConfig, postingNumber string, produc
 	return err
 }
 
-// SetGTDAsAbsent - отмечает ГТД как отсутствующее для товара (без добавления маркировки)
 func SetGTDAsAbsent(cab *models.CabinetConfig, postingNumber string, productID int64) error {
-	// Получаем exemplar_id (create-or-get автоматически создаст, если нет)
 	exemplars, err := GetExemplarIDs(cab, postingNumber)
 	if err != nil {
 		return fmt.Errorf("ошибка получения exemplar_id: %w", err)
 	}
 
-	// Находим exemplar_id для нужного товара
 	var exemplarIDs []int64
 	for _, p := range exemplars.Products {
 		if p.ProductID == productID {
@@ -92,32 +89,32 @@ func SetGTDAsAbsent(cab *models.CabinetConfig, postingNumber string, productID i
 		return fmt.Errorf("не найдены exemplar_id для товара %d в заказе %s", productID, postingNumber)
 	}
 
-	type Exemplar struct {
+	type GTDExemplar struct {
 		ExemplarID   int64 `json:"exemplar_id"`
 		IsGTDAbsent  bool  `json:"is_gtd_absent"`
 		IsRNPTAbsent bool  `json:"is_rnpt_absent"`
 	}
 
-	type ProductExemplar struct {
-		ProductID int64      `json:"product_id"`
-		Exemplars []Exemplar `json:"exemplars"`
+	type GTDProductExemplar struct {
+		ProductID int64         `json:"product_id"`
+		Exemplars []GTDExemplar `json:"exemplars"`
 	}
 
 	request := struct {
-		PostingNumber string            `json:"posting_number"`
-		Products      []ProductExemplar `json:"products"`
+		PostingNumber string               `json:"posting_number"`
+		Products      []GTDProductExemplar `json:"products"`
 	}{
 		PostingNumber: postingNumber,
-		Products: []ProductExemplar{
+		Products: []GTDProductExemplar{
 			{
 				ProductID: productID,
-				Exemplars: make([]Exemplar, 0),
+				Exemplars: make([]GTDExemplar, 0),
 			},
 		},
 	}
 
 	for _, id := range exemplarIDs {
-		request.Products[0].Exemplars = append(request.Products[0].Exemplars, Exemplar{
+		request.Products[0].Exemplars = append(request.Products[0].Exemplars, GTDExemplar{
 			ExemplarID:   id,
 			IsGTDAbsent:  true,
 			IsRNPTAbsent: true,

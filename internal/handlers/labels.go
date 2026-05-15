@@ -22,6 +22,7 @@ var labelQueue = &models.LabelQueue{
 	FailedItems: make(map[string][]string),
 }
 
+// Получение количества доступных кодов маркировки
 func HandleGetAvailableCodes(w http.ResponseWriter, r *http.Request) {
 	config.CodesMutex.Lock()
 	count := len(config.MarkingCodes)
@@ -32,6 +33,7 @@ func HandleGetAvailableCodes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Кнопка "Разделить и скачать этикетки"
 func HandleStartLabelGenerationForShipments(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -62,54 +64,47 @@ func HandleStartLabelGenerationForShipments(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Убираем дубликаты
-	uniqueNumbers := make(map[string]bool)
+	uniqueOrders := make(map[string]bool)
 	for _, num := range req.PostingNumbers {
-		uniqueNumbers[num] = true
+		uniqueOrders[num] = true
 	}
-
-	uniqueList := make([]string, 0, len(uniqueNumbers))
-	for num := range uniqueNumbers {
-		uniqueList = append(uniqueList, num)
-	}
-
-	log.Printf("📦 Уникальных заказов для обработки: %d", len(uniqueList))
 
 	cabinet := config.GetActiveConfig()
 
-	// Разделяем заказы (каждый заказ только ОДИН раз)
+	// Получаем список заказов в статусе awaiting_packaging
+	availableOrders, err := services.GetAwaitingPackagingOrders(cabinet)
+	if err != nil {
+		log.Printf("❌ Ошибка получения списка заказов: %v", err)
+		config.LabelGenerationMutex.Lock()
+		config.IsLabelGenerationRunning = false
+		config.LabelGenerationMutex.Unlock()
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	availableMap := make(map[string]*models.Posting)
+	for i := range availableOrders {
+		availableMap[availableOrders[i].PostingNumber] = &availableOrders[i]
+	}
+
+	// 1. Делим заказы и собираем ПОДЗАКАЗЫ
 	var allShipments []string
 
-	for _, postingNumber := range uniqueList {
-		// Получаем актуальный заказ в статусе awaiting_packaging
-		orders, err := services.GetAwaitingPackagingOrders(cabinet)
-		if err != nil {
-			log.Printf("❌ Ошибка получения заказа %s: %v", postingNumber, err)
-			continue
-		}
-
-		var targetOrder *models.Posting
-		for i := range orders {
-			if orders[i].PostingNumber == postingNumber {
-				targetOrder = &orders[i]
-				break
-			}
-		}
-
-		if targetOrder == nil {
+	for postingNumber := range uniqueOrders {
+		targetOrder, exists := availableMap[postingNumber]
+		if !exists {
 			log.Printf("⚠️ Заказ %s не найден в awaiting_packaging, пропускаем", postingNumber)
 			continue
 		}
 
-		// Собираем товары
+		// Формируем упаковки (каждый товар в отдельную упаковку)
 		packages := make([]services.ShipPackage, 0)
 		for _, p := range targetOrder.Products {
 			productID := p.ProductID
 			if productID == 0 {
 				productID = p.SKU
-				log.Printf("⚠️ ProductID для товара '%s' был 0, используем SKU %d", p.Name, productID)
 			}
 			if productID == 0 {
-				log.Printf("❌ Товар '%s' имеет ProductID=0 и SKU=0, пропускаем", p.Name)
 				continue
 			}
 			for i := 0; i < p.Quantity; i++ {
@@ -129,6 +124,7 @@ func HandleStartLabelGenerationForShipments(w http.ResponseWriter, r *http.Reque
 			continue
 		}
 
+		// Делим заказ и получаем ПОДЗАКАЗЫ
 		shipments, err := services.ShipOrder(cabinet, postingNumber, packages)
 		if err != nil {
 			log.Printf("❌ Ошибка разделения заказа %s: %v", postingNumber, err)
@@ -149,29 +145,35 @@ func HandleStartLabelGenerationForShipments(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	log.Printf("📦 Всего отправлений для этикеток: %d", len(allShipments))
+	log.Printf("📦 Всего подзаказов для этикеток: %d", len(allShipments))
 
-	// Запускаем генерацию этикеток
-	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	queue := services.GetLabelQueue()
-	queue.Lock()
-	queue.Jobs[jobID] = allShipments
-	queue.Status[jobID] = "pending"
-	queue.Total[jobID] = len(allShipments)
-	queue.Progress[jobID] = 0
-	queue.StartTime[jobID] = time.Now()
-	queue.Errors[jobID] = ""
-	queue.FailedItems[jobID] = []string{}
-	queue.Unlock()
+	// 2. Запускаем ProcessLabelJob для ПОДЗАКАЗОВ (с задержкой)
+	go func() {
+		log.Printf("⏳ Ожидание 10 секунд перед заказом этикеток...")
+		time.Sleep(10 * time.Second)
 
-	go services.ProcessLabelJob(jobID, queue)
+		jobID := fmt.Sprintf("%d", time.Now().UnixNano())
+		queue := services.GetLabelQueue()
+		queue.Lock()
+		queue.Jobs[jobID] = allShipments
+		queue.Status[jobID] = "pending"
+		queue.Total[jobID] = len(allShipments)
+		queue.Progress[jobID] = 0
+		queue.StartTime[jobID] = time.Now()
+		queue.Errors[jobID] = ""
+		queue.FailedItems[jobID] = []string{}
+		queue.Unlock()
+
+		services.ProcessLabelJob(jobID, queue)
+	}()
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "ok",
-		"job_id": jobID,
+		"status":  "ok",
+		"message": fmt.Sprintf("Запущена обработка %d заказов, этикетки начнут загружаться через 10 секунд", len(allShipments)),
 	})
 }
 
+// Получение статуса генерации этикеток
 func HandleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -193,6 +195,7 @@ func HandleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Отмена генерации этикеток
 func HandleCancelLabelGeneration(w http.ResponseWriter, r *http.Request) {
 	config.LabelGenerationMutex.Lock()
 	if config.IsLabelGenerationRunning {
@@ -211,6 +214,7 @@ func HandleCancelLabelGeneration(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Повторная попытка для failed заказов
 func HandleRetryLabelGeneration(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

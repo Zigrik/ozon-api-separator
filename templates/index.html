@@ -127,7 +127,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно для маркировки и ГТД -->
     <div id="markingModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -145,7 +144,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно для страны производителя -->
     <div id="countryModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -169,7 +167,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.8.1 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.8.3 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -687,12 +685,13 @@
                                 <td class="quantity-cell"><span class="quantity-value">${totalQuantity}</span></td>
                                 <td class="price-cell">${price.toLocaleString('ru-RU')} ₽</td>
                                 <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
-                            <table>
+                            </tr>
                         `;
                     }).join('');
                 }
                 document.getElementById('ordersContainer').style.display = 'block';
                 
+                // Обработчики строк
                 document.querySelectorAll('.order-row').forEach(row => {
                     const leftCb = row.querySelector('td:first-child .order-checkbox');
                     const rightCb = row.querySelector('td:last-child .order-checkbox');
@@ -708,6 +707,7 @@
                     });
                 });
                 
+                // Обработчики клика по предупреждениям
                 document.querySelectorAll('.clickable').forEach(el => {
                     el.addEventListener('click', async (e) => {
                         e.stopPropagation();
@@ -718,8 +718,11 @@
                             const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
                             const product = order?.products.find(p => p.product_id === parseInt(productDiv.dataset.pid));
                             if (product) {
-                                if (action === 'marking') await openMarkingModal(order, product);
-                                else if (action === 'country') await openCountryModal(order, product);
+                                if (action === 'marking') {
+                                    await openMarkingModal(order, product);
+                                } else if (action === 'country') {
+                                    await openCountryModal(order, product);
+                                }
                             }
                         }
                     });
@@ -772,53 +775,35 @@
                 showToast('Выберите заказы', true);
                 return;
             }
-            
             const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
             const toShip = [];
-            
             for (const num of numbers) {
                 const order = orders.find(o => o.posting_number === num);
                 if (order && order.status === 'awaiting_packaging') {
-                    // Исключаем товары с маркировкой и ГТД
                     const valid = order.products.filter(p => !p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required);
                     if (valid.length) {
                         toShip.push({
                             posting_number: num,
                             products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
                         });
-                    } else {
-                        console.log(`Заказ ${num} не содержит товаров для отправки (все требуют маркировку/ГТД/страну)`);
                     }
                 }
             }
-            
             if (toShip.length === 0) {
-                showToast('Нет заказов для отправки (проверьте требования)', true);
+                showToast('Нет заказов для отправки', true);
                 return;
             }
-            
-            console.log('Отправка заказов:', toShip);
-            
             showOverlay();
             try {
                 const data = await apiRequest('/api/orders/ship', {
                     method: 'POST',
                     body: JSON.stringify({ orders: toShip })
                 });
-                
                 let ok = 0, err = 0;
                 data.results.forEach(r => {
-                    if (r.status === 'success') {
-                        ok++;
-                        showToast(r.message);
-                        console.log(`Успешно: ${r.posting_number} -> отправления:`, r.shipments);
-                    } else {
-                        err++;
-                        console.error(`Ошибка: ${r.posting_number} - ${r.error}`);
-                        showToast(`Ошибка: ${r.error}`, true);
-                    }
+                    if (r.status === 'success') { ok++; showToast(r.message); }
+                    else { err++; showToast(`Ошибка: ${r.error}`, true); }
                 });
-                
                 showToast(`✅${ok} ${err ? `❌${err}` : ''}`);
                 setTimeout(async () => {
                     hideOverlay();
@@ -826,7 +811,6 @@
                 }, 2000);
             } catch (err) {
                 hideOverlay();
-                console.error('Ошибка в splitOrders:', err);
                 if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
             }
         }
@@ -842,66 +826,20 @@
             
             showOverlay();
             try {
-                const toShip = [];
-                for (const num of numbers) {
-                    const order = orders.find(o => o.posting_number === num);
-                    if (order && order.status === 'awaiting_packaging') {
-                        const valid = order.products.filter(p => !p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required);
-                        if (valid.length) {
-                            toShip.push({
-                                posting_number: num,
-                                products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
-                            });
-                        }
-                    }
-                }
-                
-                if (toShip.length === 0) {
-                    hideOverlay();
-                    showToast('Нет заказов для отправки', true);
-                    return;
-                }
-                
-                const shipData = await apiRequest('/api/orders/ship', {
+                const labelData = await apiRequest('/api/labels/generate', {
                     method: 'POST',
-                    body: JSON.stringify({ orders: toShip })
-                });
-                
-                let ok = 0, err = 0;
-                const allShipments = [];
-                shipData.results.forEach(r => {
-                    if (r.status === 'success') {
-                        ok++;
-                        if (r.shipments && r.shipments.length) {
-                            allShipments.push(...r.shipments);
-                        }
-                    } else {
-                        err++;
-                        console.error('Ошибка разделения заказа:', r.posting_number, r.error);
-                    }
+                    body: JSON.stringify({ posting_numbers: numbers })
                 });
                 
                 hideOverlay();
                 
-                if (ok === 0) {
-                    showToast('Ошибка при разделении заказов (подробности в консоли)', true);
-                    return;
+                if (labelData.status === 'ok') {
+                    currentLabelJobId = labelData.job_id;
+                    showToast(labelData.message || 'Запущена обработка этикеток');
+                    startLabelStatusTracking();
+                } else {
+                    showToast(labelData.message || 'Ошибка при запуске генерации этикеток', true);
                 }
-                
-                if (allShipments.length === 0) {
-                    showToast('Не найдены отправления для заказов', true);
-                    return;
-                }
-                
-                console.log('Все отправления для этикеток:', allShipments);
-                
-                const labelData = await apiRequest('/api/labels/generate', {
-                    method: 'POST',
-                    body: JSON.stringify({ posting_numbers: allShipments })
-                });
-                
-                currentLabelJobId = labelData.job_id;
-                startLabelStatusTracking();
                 
             } catch (err) {
                 hideOverlay();
@@ -941,14 +879,30 @@
                         setTimeout(() => {
                             statusDiv.style.display = 'none';
                             currentLabelJobId = null;
-                        }, 5000);
-                        await loadOrders();
+                            loadOrders();
+                        }, 3000);
                     } else if (data.status === 'error') {
                         statusText.textContent = `❌ Ошибка: ${data.error || 'неизвестная ошибка'}`;
                         progressSpan.textContent = `${data.progress}/${data.total}`;
                         if (closeBtn) closeBtn.style.display = 'inline-block';
                         clearInterval(labelStatusInterval);
                         labelStatusInterval = null;
+                        setTimeout(() => {
+                            statusDiv.style.display = 'none';
+                            currentLabelJobId = null;
+                            loadOrders();
+                        }, 5000);
+                    } else if (data.status === 'partial') {
+                        statusText.textContent = `⚠️ Частичная ошибка: ${data.error || 'некоторые этикетки не сохранены'}`;
+                        progressSpan.textContent = `${data.progress}/${data.total}`;
+                        if (closeBtn) closeBtn.style.display = 'inline-block';
+                        clearInterval(labelStatusInterval);
+                        labelStatusInterval = null;
+                        setTimeout(() => {
+                            statusDiv.style.display = 'none';
+                            currentLabelJobId = null;
+                            loadOrders();
+                        }, 5000);
                     }
                 } catch (err) {
                     console.error('Status check error:', err);
@@ -963,6 +917,7 @@
                         labelStatusInterval = null;
                     }
                     currentLabelJobId = null;
+                    loadOrders();
                 };
             }
         }
@@ -980,7 +935,6 @@
                 const activeSpan = document.getElementById('activeCabinet');
                 if (activeSpan) activeSpan.textContent = names[cabinet];
                 
-                // Обновляем активный класс на кнопках
                 document.querySelectorAll('.cabinet-btn').forEach(btn => {
                     btn.classList.remove('active');
                 });
@@ -1022,7 +976,6 @@
             document.getElementById('countryConfirmBtn').onclick = setCountry;
             document.getElementById('countryCancelBtn').onclick = closeAllModals;
             
-            // Привязка для авто-режима каждого кабинета
             for (const cabinet of Object.keys(cabinetNames)) {
                 const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
                 if (toggle) {

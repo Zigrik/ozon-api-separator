@@ -276,7 +276,6 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
 .order-row:hover { background-color: #f8f9fa !important; }
 .order-row.selected { background-color: #e3f2fd !important; }
 .order-row.selected:hover { background-color: #bbdef5 !important; }
-.order-row.has-issues { background-color: #ffebee !important; opacity: 1; }
 .order-row.folder-ready { 
     background-color: #fff9c4 !important; 
     opacity: 1;
