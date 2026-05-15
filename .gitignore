@@ -21,7 +21,7 @@ profile.cov
 # vendor/
 
 # Labels and logs
-label/
+labels/
 logs/
 *.pdf
 
