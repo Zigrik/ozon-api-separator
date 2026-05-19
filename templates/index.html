@@ -127,6 +127,7 @@
         </div>
     </div>
 
+    <!-- Модальное окно для маркировки и ГТД -->
     <div id="markingModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -144,6 +145,7 @@
         </div>
     </div>
 
+    <!-- Модальное окно для страны производителя -->
     <div id="countryModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -172,828 +174,995 @@
     </div>
 
     <script>
-        let isAuth = false;
-        let orders = [];
-        let authToken = localStorage.getItem('authToken');
-        let allCountries = [];
-        let currentMarkingData = null;
-        let currentCountryData = null;
+    let isAuth = false;
+    let orders = [];
+    let authToken = localStorage.getItem('authToken');
+    let allCountries = [];
+    let currentMarkingData = null;
+    let currentCountryData = null;
+    
+    let loadingText = "Трудолюбивые ослики делят и сортируют ваши заказы...";
+    let customImage = null;
+    
+    let currentLabelJobId = null;
+    let labelStatusInterval = null;
+    
+    let cabinetNames = {
+        shinorama: 'Шинорама',
+        trecktrack: 'TreckTrack',
+        sevenhundredshin: '700shin'
+    };
+
+    function showToast(msg, isErr = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.className = 'toast show ' + (isErr ? 'error' : 'success');
+        setTimeout(() => toast.className = 'toast', 5000);
+    }
+
+    function showOverlay() {
+        let overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.style.display = 'flex';
+            return;
+        }
+        overlay = document.createElement('div');
+        overlay.id = 'loadingOverlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:9999;backdrop-filter:blur(3px);';
         
-        let loadingText = "Трудолюбивые ослики делят и сортируют ваши заказы...";
-        let customImage = null;
+        let imageHtml = '';
+        if (customImage) {
+            imageHtml = `<img src="/static/images/${customImage}" style="width:80px;height:80px;object-fit:contain;animation:bounce 1s infinite ease-in-out;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'font-size:64px;animation:bounce 1s infinite ease-in-out;\'>🐴</div>';">`;
+        } else {
+            imageHtml = `<div style="font-size:64px;animation:bounce 1s infinite ease-in-out;">🐴</div>`;
+        }
         
-        let currentLabelJobId = null;
-        let labelStatusInterval = null;
-        
-        let cabinetNames = {
-            shinorama: 'Шинорама',
-            trecktrack: 'TreckTrack',
-            sevenhundredshin: '700shin'
-        };
+        overlay.innerHTML = `
+            <div style="background:white;border-radius:20px;padding:30px 40px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);animation:fadeInUp 0.3s ease;max-width:400px;">
+                ${imageHtml}
+                <div style="font-size:18px;font-weight:500;color:#333;margin:20px 0 15px 0;">${loadingText}</div>
+                <div style="width:40px;height:40px;margin:0 auto;border:3px solid #f3f3f3;border-top:3px solid #f57c00;border-radius:50%;animation:spin 1s linear infinite;"></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
 
-        function showToast(msg, isErr = false) {
-            const toast = document.getElementById('toast');
-            toast.textContent = msg;
-            toast.className = 'toast show ' + (isErr ? 'error' : 'success');
-            setTimeout(() => toast.className = 'toast', 5000);
+    function hideOverlay() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    async function loadSettings() {
+        try {
+            const res = await fetch('/api/settings');
+            const data = await res.json();
+            if (data.loading_text) loadingText = data.loading_text;
+            if (data.custom_image) customImage = data.custom_image;
+        } catch (err) {
+            console.log('Ошибка загрузки настроек:', err);
         }
+    }
 
-        function showOverlay() {
-            let overlay = document.getElementById('loadingOverlay');
-            if (overlay) {
-                overlay.style.display = 'flex';
-                return;
-            }
-            overlay = document.createElement('div');
-            overlay.id = 'loadingOverlay';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:9999;backdrop-filter:blur(3px);';
-            
-            let imageHtml = '';
-            if (customImage) {
-                imageHtml = `<img src="/static/images/${customImage}" style="width:80px;height:80px;object-fit:contain;animation:bounce 1s infinite ease-in-out;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'font-size:64px;animation:bounce 1s infinite ease-in-out;\'>🐴</div>';">`;
-            } else {
-                imageHtml = `<div style="font-size:64px;animation:bounce 1s infinite ease-in-out;">🐴</div>`;
-            }
-            
-            overlay.innerHTML = `
-                <div style="background:white;border-radius:20px;padding:30px 40px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);animation:fadeInUp 0.3s ease;max-width:400px;">
-                    ${imageHtml}
-                    <div style="font-size:18px;font-weight:500;color:#333;margin:20px 0 15px 0;">${loadingText}</div>
-                    <div style="width:40px;height:40px;margin:0 auto;border:3px solid #f3f3f3;border-top:3px solid #f57c00;border-radius:50%;animation:spin 1s linear infinite;"></div>
-                </div>
-            `;
-            document.body.appendChild(overlay);
+    async function apiRequest(url, opts = {}) {
+        const headers = { 'Content-Type': 'application/json', ...opts.headers };
+        if (authToken) headers['X-Auth-Token'] = authToken;
+        const res = await fetch(url, { ...opts, headers });
+        if (res.status === 401) {
+            authToken = null;
+            localStorage.removeItem('authToken');
+            document.getElementById('mainContent').style.display = 'none';
+            document.getElementById('authPanel').style.display = 'block';
+            showToast('Сессия истекла', true);
+            throw new Error('unauthorized');
         }
-
-        function hideOverlay() {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) overlay.style.display = 'none';
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Ошибка запроса');
         }
+        return res.json();
+    }
 
-        async function loadSettings() {
-            try {
-                const res = await fetch('/api/settings');
-                const data = await res.json();
-                if (data.loading_text) loadingText = data.loading_text;
-                if (data.custom_image) customImage = data.custom_image;
-            } catch (err) {
-                console.log('Ошибка загрузки настроек:', err);
-            }
-        }
-
-        async function apiRequest(url, opts = {}) {
-            const headers = { 'Content-Type': 'application/json', ...opts.headers };
-            if (authToken) headers['X-Auth-Token'] = authToken;
-            const res = await fetch(url, { ...opts, headers });
-            if (res.status === 401) {
-                authToken = null;
-                localStorage.removeItem('authToken');
-                document.getElementById('mainContent').style.display = 'none';
-                document.getElementById('authPanel').style.display = 'block';
-                showToast('Сессия истекла', true);
-                throw new Error('unauthorized');
-            }
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.error || 'Ошибка запроса');
-            }
-            return res.json();
-        }
-
-        // ==================== АВТО-РЕЖИМ ДЛЯ КАЖДОГО КАБИНЕТА ====================
-        async function loadAutoModeStatus() {
-            try {
-                const data = await apiRequest('/api/auto-mode/status');
-                const cabinetsStatus = data.cabinets || {};
-                for (const cabinet of Object.keys(cabinetNames)) {
-                    const enabled = cabinetsStatus[cabinet] || false;
-                    const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
-                    if (toggle) toggle.checked = enabled;
-                    updateAutoModeIndicator(cabinet, enabled);
-                }
-            } catch (err) {
-                console.error('Ошибка загрузки статуса авто-режима:', err);
-            }
-        }
-
-        function updateAutoModeIndicator(cabinet, enabled) {
-            const indicator = document.getElementById(`autoModeStatus_${cabinet}`);
-            if (indicator) {
-                indicator.textContent = enabled ? 'вкл' : 'выкл';
-                indicator.style.color = enabled ? '#28a745' : '#dc3545';
-            }
-        }
-
-        async function toggleAutoMode(cabinet, enabled) {
-            try {
-                await apiRequest('/api/auto-mode/toggle', {
-                    method: 'POST',
-                    body: JSON.stringify({ cabinet, enabled })
-                });
-                updateAutoModeIndicator(cabinet, enabled);
-                showToast(`Авто-режим для кабинета ${cabinetNames[cabinet]} ${enabled ? 'включён' : 'выключен'}`);
-            } catch (err) {
-                showToast(`Ошибка: ${err.message}`, true);
+    // ==================== АВТО-РЕЖИМ ====================
+    async function loadAutoModeStatus() {
+        try {
+            const data = await apiRequest('/api/auto-mode/status');
+            const cabinetsStatus = data.cabinets || {};
+            for (const cabinet of Object.keys(cabinetNames)) {
+                const enabled = cabinetsStatus[cabinet] || false;
                 const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
-                if (toggle) toggle.checked = !enabled;
+                if (toggle) toggle.checked = enabled;
+                updateAutoModeIndicator(cabinet, enabled);
             }
+        } catch (err) {
+            console.error('Ошибка загрузки статуса авто-режима:', err);
         }
+    }
 
-        async function loadCountries() {
-            try {
-                const data = await apiRequest('/api/countries/list');
-                allCountries = data.countries || [];
-                allCountries.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-                filterCountries('');
-            } catch (err) {
-                console.error('Ошибка загрузки стран:', err);
-            }
+    function updateAutoModeIndicator(cabinet, enabled) {
+        const indicator = document.getElementById(`autoModeStatus_${cabinet}`);
+        if (indicator) {
+            indicator.textContent = enabled ? 'вкл' : 'выкл';
+            indicator.style.color = enabled ? '#28a745' : '#dc3545';
         }
+    }
 
-        function filterCountries(searchText) {
-            const select = document.getElementById('countrySelect');
-            const searchLower = searchText.toLowerCase().trim();
-            select.innerHTML = '';
-            const placeholder = document.createElement('option');
-            placeholder.disabled = true;
-            placeholder.selected = true;
-            placeholder.textContent = '🔍 ' + (searchText === '' ? 'Выберите страну' : 'Результаты');
-            placeholder.style.cssText = 'color:#999;font-style:italic';
-            select.appendChild(placeholder);
-            if (searchText === '') {
-                allCountries.forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.code;
-                    opt.textContent = `${c.name} (${c.code})`;
-                    select.appendChild(opt);
-                });
-                return;
-            }
-            const filtered = allCountries.filter(c => c.name.toLowerCase().includes(searchLower) || c.code.toLowerCase().includes(searchLower));
-            if (filtered.length === 0) {
+    async function toggleAutoMode(cabinet, enabled) {
+        try {
+            await apiRequest('/api/auto-mode/toggle', {
+                method: 'POST',
+                body: JSON.stringify({ cabinet, enabled })
+            });
+            updateAutoModeIndicator(cabinet, enabled);
+            showToast(`Авто-режим для кабинета ${cabinetNames[cabinet]} ${enabled ? 'включён' : 'выключен'}`);
+        } catch (err) {
+            showToast(`Ошибка: ${err.message}`, true);
+            const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
+            if (toggle) toggle.checked = !enabled;
+        }
+    }
+
+    async function loadCountries() {
+        try {
+            const data = await apiRequest('/api/countries/list');
+            allCountries = data.countries || [];
+            allCountries.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+            filterCountries('');
+        } catch (err) {
+            console.error('Ошибка загрузки стран:', err);
+        }
+    }
+
+    function filterCountries(searchText) {
+        const select = document.getElementById('countrySelect');
+        const searchLower = searchText.toLowerCase().trim();
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        placeholder.textContent = '🔍 ' + (searchText === '' ? 'Выберите страну' : 'Результаты');
+        placeholder.style.cssText = 'color:#999;font-style:italic';
+        select.appendChild(placeholder);
+        if (searchText === '') {
+            allCountries.forEach(c => {
                 const opt = document.createElement('option');
-                opt.value = searchText.toUpperCase();
-                opt.textContent = `➕ Добавить: "${searchText.toUpperCase()}"`;
-                opt.style.cssText = 'color:#f57c00;font-weight:bold';
+                opt.value = c.code;
+                opt.textContent = `${c.name} (${c.code})`;
                 select.appendChild(opt);
-            } else {
-                filtered.forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.code;
-                    opt.textContent = `${c.name} (${c.code})`;
-                    select.appendChild(opt);
-                });
-            }
+            });
+            return;
         }
-
-        async function updateAvailableCodes() {
-            try {
-                const data = await apiRequest('/api/codes/available');
-                document.getElementById('availableCodesCount').textContent = data.count;
-                return data.count;
-            } catch (e) {
-                return 0;
-            }
+        const filtered = allCountries.filter(c => c.name.toLowerCase().includes(searchLower) || c.code.toLowerCase().includes(searchLower));
+        if (filtered.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = searchText.toUpperCase();
+            opt.textContent = `➕ Добавить: "${searchText.toUpperCase()}"`;
+            opt.style.cssText = 'color:#f57c00;font-weight:bold';
+            select.appendChild(opt);
+        } else {
+            filtered.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.code;
+                opt.textContent = `${c.name} (${c.code})`;
+                select.appendChild(opt);
+            });
         }
+    }
 
-        function updateIssuesStats() {
-            let countryRequired = 0;
-            let markingRequired = 0;
-            orders.forEach(order => {
-                order.products.forEach(product => {
-                    if (product.is_country_required) countryRequired += product.quantity;
-                    if ((product.is_mandatory_marked || product.is_gtd_required) && !product.is_marking_completed) {
-                        markingRequired += product.quantity;
+    async function updateAvailableCodes() {
+        try {
+            const data = await apiRequest('/api/codes/available');
+            document.getElementById('availableCodesCount').textContent = data.count;
+            return data.count;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    function updateIssuesStats() {
+        let countryRequired = 0;
+        let markingRequired = 0;
+        orders.forEach(order => {
+            order.products.forEach(product => {
+                if (product.is_country_required) countryRequired += product.quantity;
+                if ((product.is_mandatory_marked || product.is_gtd_required) && !product.is_marking_completed) {
+                    markingRequired += product.quantity;
+                }
+            });
+        });
+        document.getElementById('countryRequiredCount').textContent = countryRequired;
+        document.getElementById('markingRequiredCount').textContent = markingRequired;
+    }
+
+    function calcPrice(order) {
+        let total = 0;
+        order.products.forEach(p => {
+            const price = typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0);
+            total += price * p.quantity;
+        });
+        return total;
+    }
+
+    function updateStats() {
+        const selected = document.querySelectorAll('.order-row.selected');
+        const allRows = document.querySelectorAll('.order-row');
+        
+        let selectedOrdersCount = selected.length;
+        let selectedProductsCount = 0;
+        let selectedTotalPrice = 0;
+        let totalProductsCount = 0;
+        let totalPrice = 0;
+        
+        selected.forEach(row => {
+            const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+            if (order) {
+                order.products.forEach(p => {
+                    if (!p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required) {
+                        selectedProductsCount += p.quantity;
+                        selectedTotalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
                     }
                 });
-            });
-            document.getElementById('countryRequiredCount').textContent = countryRequired;
-            document.getElementById('markingRequiredCount').textContent = markingRequired;
-        }
-
-        function calcPrice(order) {
-            let total = 0;
-            order.products.forEach(p => {
-                const price = typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0);
-                total += price * p.quantity;
-            });
-            return total;
-        }
-
-        function updateStats() {
-            const selected = document.querySelectorAll('.order-row.selected');
-            const allRows = document.querySelectorAll('.order-row');
-            
-            let selectedOrdersCount = selected.length;
-            let selectedProductsCount = 0;
-            let selectedTotalPrice = 0;
-            let totalProductsCount = 0;
-            let totalPrice = 0;
-            
-            selected.forEach(row => {
-                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
-                if (order) {
-                    order.products.forEach(p => {
-                        if (!p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required) {
-                            selectedProductsCount += p.quantity;
-                            selectedTotalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
-                        }
-                    });
-                }
-            });
-            
-            allRows.forEach(row => {
-                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
-                if (order) {
-                    order.products.forEach(p => {
-                        totalProductsCount += p.quantity;
-                        totalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
-                    });
-                }
-            });
-            
-            document.getElementById('selectedOrdersCount').textContent = selectedOrdersCount;
-            document.getElementById('totalOrdersCount').textContent = allRows.length;
-            document.getElementById('selectedProductsCount').textContent = selectedProductsCount;
-            document.getElementById('totalProductsCount').textContent = totalProductsCount;
-            document.getElementById('selectedTotalPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
-            
-            document.getElementById('footerSelectedOrders').textContent = selectedOrdersCount;
-            document.getElementById('footerTotalOrders').textContent = allRows.length;
-            document.getElementById('footerSelectedProducts').textContent = selectedProductsCount;
-            document.getElementById('footerTotalProducts').textContent = totalProductsCount;
-            document.getElementById('footerSelectedPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
-        }
-
-        function updateSelectAll() {
-            const left = document.getElementById('selectAllLeft');
-            const right = document.getElementById('selectAllRight');
-            
-            if (!left || !right) return;
-            
-            const cbs = document.querySelectorAll('.order-checkbox:not([disabled])');
-            
-            if (cbs.length === 0) {
-                left.checked = false;
-                left.indeterminate = false;
-                right.checked = false;
-                right.indeterminate = false;
-                return;
             }
-            
-            const allChecked = Array.from(cbs).every(cb => cb.checked);
-            const someChecked = Array.from(cbs).some(cb => cb.checked);
-            
-            left.checked = allChecked;
-            left.indeterminate = !allChecked && someChecked;
-            right.checked = allChecked;
-            right.indeterminate = !allChecked && someChecked;
-        }
+        });
+        
+        allRows.forEach(row => {
+            const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+            if (order) {
+                order.products.forEach(p => {
+                    totalProductsCount += p.quantity;
+                    totalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
+                });
+            }
+        });
+        
+        document.getElementById('selectedOrdersCount').textContent = selectedOrdersCount;
+        document.getElementById('totalOrdersCount').textContent = allRows.length;
+        document.getElementById('selectedProductsCount').textContent = selectedProductsCount;
+        document.getElementById('totalProductsCount').textContent = totalProductsCount;
+        document.getElementById('selectedTotalPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
+        
+        document.getElementById('footerSelectedOrders').textContent = selectedOrdersCount;
+        document.getElementById('footerTotalOrders').textContent = allRows.length;
+        document.getElementById('footerSelectedProducts').textContent = selectedProductsCount;
+        document.getElementById('footerTotalProducts').textContent = totalProductsCount;
+        document.getElementById('footerSelectedPrice').textContent = selectedTotalPrice.toLocaleString('ru-RU');
+    }
 
-        function selectAll(checked) {
-            const checkboxes = document.querySelectorAll('.order-checkbox:not([disabled])');
-            checkboxes.forEach(cb => cb.checked = checked);
-            
-            document.querySelectorAll('.order-row').forEach(row => {
-                const cb = row.querySelector('td:first-child .order-checkbox');
-                if (cb && !cb.disabled) {
-                    if (checked) {
-                        row.classList.add('selected');
-                    } else {
-                        row.classList.remove('selected');
-                    }
-                }
-            });
-            
-            updateSelectAll();
-            updateStats();
+    function updateSelectAll() {
+        const left = document.getElementById('selectAllLeft');
+        const right = document.getElementById('selectAllRight');
+        
+        if (!left || !right) return;
+        
+        const cbs = document.querySelectorAll('.order-checkbox:not([disabled])');
+        
+        if (cbs.length === 0) {
+            left.checked = false;
+            left.indeterminate = false;
+            right.checked = false;
+            right.indeterminate = false;
+            return;
         }
+        
+        const allChecked = Array.from(cbs).every(cb => cb.checked);
+        const someChecked = Array.from(cbs).some(cb => cb.checked);
+        
+        left.checked = allChecked;
+        left.indeterminate = !allChecked && someChecked;
+        right.checked = allChecked;
+        right.indeterminate = !allChecked && someChecked;
+    }
 
-        function syncCheckbox(cb, row) {
-            const num = cb.dataset.postingNumber;
-            const allCheckboxes = document.querySelectorAll(`.order-checkbox[data-posting-number="${num}"]`);
-            allCheckboxes.forEach(c => {
-                if (c !== cb) c.checked = cb.checked;
-            });
-            if (row && !cb.disabled) {
-                if (cb.checked) {
+    function selectAll(checked) {
+        const checkboxes = document.querySelectorAll('.order-checkbox:not([disabled])');
+        checkboxes.forEach(cb => {
+            cb.checked = checked;
+            const row = cb.closest('.order-row');
+            if (row) {
+                if (checked) {
                     row.classList.add('selected');
                 } else {
                     row.classList.remove('selected');
                 }
             }
-            updateSelectAll();
-            updateStats();
-        }
+        });
+        
+        updateSelectAll();
+        updateStats();
+    }
 
-        function toggleRow(row, leftCb, rightCb) {
-            if (leftCb && leftCb.disabled) return;
-            const newState = !leftCb.checked;
-            leftCb.checked = newState;
-            if (rightCb) rightCb.checked = newState;
-            if (newState) {
+    function syncCheckbox(cb, row) {
+        const num = cb.dataset.postingNumber;
+        const allCheckboxes = document.querySelectorAll(`.order-checkbox[data-posting-number="${num}"]`);
+        allCheckboxes.forEach(c => {
+            if (c !== cb) c.checked = cb.checked;
+        });
+        if (row && !cb.disabled) {
+            if (cb.checked) {
                 row.classList.add('selected');
             } else {
                 row.classList.remove('selected');
             }
-            updateSelectAll();
-            updateStats();
         }
+        updateSelectAll();
+        updateStats();
+    }
 
-        async function openMarkingModal(order, product) {
-            const available = await updateAvailableCodes();
-            if (available < product.quantity) {
-                showToast(`Нужно ${product.quantity} кодов, доступно ${available}`, true);
-                return;
-            }
-            currentMarkingData = {
-                postingNumber: order.posting_number,
-                productId: product.product_id,
-                quantity: product.quantity,
-                productName: product.name
-            };
-            const modal = document.getElementById('markingModal');
-            document.getElementById('markingProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Кол-во:</strong> ${product.quantity}`;
-            document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>⚠️ ГТД будет отмечено как отсутствующее автоматически.`;
-            modal.style.display = 'flex';
+    function toggleRow(row, leftCb, rightCb) {
+        if (leftCb && leftCb.disabled) return;
+        const newState = !leftCb.checked;
+        leftCb.checked = newState;
+        if (rightCb) rightCb.checked = newState;
+        if (newState) {
+            row.classList.add('selected');
+        } else {
+            row.classList.remove('selected');
         }
+        updateSelectAll();
+        updateStats();
+    }
 
-        async function addMarkings() {
-            if (!currentMarkingData) return;
-            try {
-                const res = await fetch('/api/markings/add-with-gtd', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
-                    body: JSON.stringify({
-                        posting_number: currentMarkingData.postingNumber,
-                        product_id: currentMarkingData.productId,
-                        quantity: currentMarkingData.quantity,
-                        gtd_absent: true
-                    })
-                });
-                const data = await res.json();
-                if (data.status === 'ok') {
-                    showToast(`✅ ${data.message}. Осталось кодов: ${data.remaining}`);
-                    await updateAvailableCodes();
-                    closeAllModals();
-                    await loadOrders();
-                } else {
-                    showToast(`❌ ${data.message}`, true);
-                }
-            } catch (err) {
-                showToast(`❌ ${err.message}`, true);
-            }
+    async function openMarkingModal(order, product) {
+        console.log('🏷️ openMarkingModal вызван', order.posting_number, product.name);
+        const available = await updateAvailableCodes();
+        if (available < product.quantity) {
+            showToast(`Нужно ${product.quantity} кодов, доступно ${available}`, true);
+            return;
         }
-
-        async function openCountryModal(order, product) {
-            await loadCountries();
-            const searchInput = document.getElementById('countrySearchInput');
-            if (searchInput) searchInput.value = '';
-            filterCountries('');
-            currentCountryData = {
-                postingNumber: order.posting_number,
-                productId: product.product_id,
-                productName: product.name
-            };
-            const modal = document.getElementById('countryModal');
-            document.getElementById('countryProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}`;
-            modal.style.display = 'flex';
-            setTimeout(() => searchInput?.focus(), 100);
+        
+        // ВАЖНО: если product_id === 0, используем sku
+        let finalProductId = product.product_id;
+        if (finalProductId === 0 && product.sku) {
+            finalProductId = product.sku;
         }
+        
+        currentMarkingData = {
+            postingNumber: order.posting_number,
+            productId: finalProductId,
+            quantity: product.quantity,
+            productName: product.name
+        };
+        const modal = document.getElementById('markingModal');
+        document.getElementById('markingProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Кол-во:</strong> ${product.quantity}<br><strong>SKU:</strong> ${product.sku || '—'}`;
+        document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>⚠️ ГТД будет отмечено как отсутствующее автоматически.`;
+        modal.style.display = 'flex';
+    }
 
-        async function setCountry() {
-            if (!currentCountryData) return;
-            const select = document.getElementById('countrySelect');
-            const searchInput = document.getElementById('countrySearchInput');
-            let countryCode = select.value;
-            if (countryCode === '' && searchInput.value.trim() !== '') {
-                const inputText = searchInput.value.trim().toUpperCase();
-                const found = allCountries.find(c => c.name.toUpperCase() === inputText || c.code === inputText);
-                countryCode = found ? found.code : inputText;
-            }
-            if (!countryCode) {
-                showToast('Выберите страну или введите код', true);
-                return;
-            }
-            try {
-                const res = await fetch('/api/countries/set', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
-                    body: JSON.stringify({
-                        posting_number: currentCountryData.postingNumber,
-                        product_id: currentCountryData.productId,
-                        country_code: countryCode
-                    })
-                });
-                const data = await res.json();
-                if (data.status === 'ok') {
-                    showToast(`✅ ${data.message}`);
-                    closeAllModals();
-                    await loadOrders();
-                } else {
-                    showToast(`❌ ${data.message}`, true);
-                }
-            } catch (err) {
-                showToast(`❌ ${err.message}`, true);
-            }
-        }
-
-        function closeAllModals() {
-            document.getElementById('markingModal').style.display = 'none';
-            document.getElementById('countryModal').style.display = 'none';
-            currentMarkingData = null;
-            currentCountryData = null;
-        }
-
-        async function checkPassword() {
-            const pwd = document.getElementById('passwordInput').value;
-            const errDiv = document.getElementById('authError');
-            if (!pwd) {
-                errDiv.textContent = 'Введите пароль';
-                errDiv.style.display = 'block';
-                return;
-            }
-            try {
-                const res = await fetch('/api/check-password', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: pwd })
-                });
-                if (!res.ok) throw new Error('Неверный пароль');
-                const data = await res.json();
-                if (data.token) {
-                    authToken = data.token;
-                    localStorage.setItem('authToken', authToken);
-                }
-                isAuth = true;
-                document.getElementById('authPanel').style.display = 'none';
-                document.getElementById('mainContent').style.display = 'block';
-                showToast('Добро пожаловать!');
-                await loadAutoModeStatus();
+    async function addMarkings() {
+        if (!currentMarkingData) return;
+        try {
+            const res = await fetch('/api/markings/add-with-gtd', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
+                body: JSON.stringify({
+                    posting_number: currentMarkingData.postingNumber,
+                    product_id: currentMarkingData.productId,
+                    quantity: currentMarkingData.quantity,
+                    gtd_absent: true
+                })
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                showToast(`✅ ${data.message}. Осталось кодов: ${data.remaining}`);
+                await updateAvailableCodes();
+                closeAllModals();
                 await loadOrders();
-            } catch (err) {
-                errDiv.textContent = err.message;
-                errDiv.style.display = 'block';
-                showToast(err.message, true);
+            } else {
+                showToast(`❌ ${data.message}`, true);
+            }
+        } catch (err) {
+            showToast(`❌ ${err.message}`, true);
+        }
+    }
+
+    async function openCountryModal(order, product) {
+        console.log('🌍 openCountryModal вызван', order.posting_number, product.name);
+        await loadCountries();
+        const searchInput = document.getElementById('countrySearchInput');
+        if (searchInput) searchInput.value = '';
+        filterCountries('');
+        currentCountryData = {
+            postingNumber: order.posting_number,
+            productId: product.product_id,
+            sku: product.sku,  // ДОБАВИТЬ ЭТУ СТРОКУ
+            productName: product.name
+        };
+        const modal = document.getElementById('countryModal');
+        document.getElementById('countryProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>SKU:</strong> ${product.sku || '—'}`;
+        modal.style.display = 'flex';
+        setTimeout(() => searchInput?.focus(), 100);
+    }
+
+    async function setCountry() {
+        if (!currentCountryData) return;
+        const select = document.getElementById('countrySelect');
+        const searchInput = document.getElementById('countrySearchInput');
+        let countryCode = select.value;
+        if (countryCode === '' && searchInput.value.trim() !== '') {
+            const inputText = searchInput.value.trim().toUpperCase();
+            const found = allCountries.find(c => c.name.toUpperCase() === inputText || c.code === inputText);
+            countryCode = found ? found.code : inputText;
+        }
+        if (!countryCode) {
+            showToast('Выберите страну или введите код', true);
+            return;
+        }
+        
+        // ВАЖНО: если productId === 0, используем sku
+        let finalProductId = currentCountryData.productId;
+        if (finalProductId === 0 && currentCountryData.sku) {
+            finalProductId = currentCountryData.sku;
+        }
+        
+        try {
+            const res = await fetch('/api/countries/set', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
+                body: JSON.stringify({
+                    posting_number: currentCountryData.postingNumber,
+                    product_id: finalProductId,
+                    country_code: countryCode
+                })
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                showToast(`✅ ${data.message}`);
+                closeAllModals();
+                await loadOrders();
+            } else {
+                showToast(`❌ ${data.message}`, true);
+            }
+        } catch (err) {
+            showToast(`❌ ${err.message}`, true);
+        }
+    }
+
+    function closeAllModals() {
+        document.getElementById('markingModal').style.display = 'none';
+        document.getElementById('countryModal').style.display = 'none';
+        currentMarkingData = null;
+        currentCountryData = null;
+    }
+
+    async function checkPassword() {
+        const pwd = document.getElementById('passwordInput').value;
+        const errDiv = document.getElementById('authError');
+        if (!pwd) {
+            errDiv.textContent = 'Введите пароль';
+            errDiv.style.display = 'block';
+            return;
+        }
+        try {
+            const res = await fetch('/api/check-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pwd })
+            });
+            if (!res.ok) throw new Error('Неверный пароль');
+            const data = await res.json();
+            if (data.token) {
+                authToken = data.token;
+                localStorage.setItem('authToken', authToken);
+            }
+            isAuth = true;
+            document.getElementById('authPanel').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            showToast('Добро пожаловать!');
+            await loadAutoModeStatus();
+            await loadOrders();
+        } catch (err) {
+            errDiv.textContent = err.message;
+            errDiv.style.display = 'block';
+            showToast(err.message, true);
+        }
+    }
+
+    // ========== ОСНОВНОЕ ИСПРАВЛЕНИЕ: поиск товара по нескольким полям ==========
+    function findProductInOrder(order, pid, offerId, sku) {
+        // Сначала пробуем найти по product_id (если не 0 и не NaN)
+        if (pid && pid !== 0 && !isNaN(pid)) {
+            const found = order.products.find(p => p.product_id === pid);
+            if (found) return found;
+        }
+        
+        // Затем по offer_id
+        if (offerId && offerId !== '') {
+            const found = order.products.find(p => p.offer_id === offerId);
+            if (found) return found;
+        }
+        
+        // Затем по sku
+        if (sku && sku !== 0 && !isNaN(sku)) {
+            const found = order.products.find(p => p.sku === sku);
+            if (found) return found;
+        }
+        
+        // Если ничего не нашли, пробуем найти по имени (последний шанс)
+        const productDiv = document.querySelector(`.product-item[data-pid="${pid}"]`);
+        if (productDiv) {
+            const name = productDiv.dataset.name;
+            if (name) {
+                const found = order.products.find(p => p.name === name);
+                if (found) return found;
             }
         }
+        
+        return null;
+    }
 
-        async function loadOrders() {
-            try {
-                showToast('Загрузка...');
-                const data = await apiRequest('/api/orders');
-                orders = data.orders;
-                const tbody = document.getElementById('ordersList');
-                if (orders.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
-                } else {
-                    tbody.innerHTML = orders.map((order, i) => {
-                        const price = calcPrice(order);
-                        const hasIssues = order.products.some(p => p.is_mandatory_marked || p.is_gtd_required || p.is_country_required);
-                        const totalQuantity = order.products.reduce((sum, p) => sum + p.quantity, 0);
-                        const isFolderReady = order.is_folder_ready || false;
-                        let rowClass = 'order-row';
-                        if (isFolderReady) rowClass += ' folder-ready';
-                        if (hasIssues && !isFolderReady) rowClass += ' has-issues';
-                        const disabledAttr = (hasIssues || isFolderReady) ? 'disabled' : '';
-                        return `
-                            <tr class="${rowClass}" data-posting-number="${order.posting_number}">
-                                <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
-                                <td class="posting-number">${escapeHtml(order.posting_number)}</td>
-                                <td class="status-cell"><span class="status-badge status-${order.status}">${getStatusText(order.status)}</span></td>
-                                <td class="products-cell">
-                                    ${order.products.map(p => {
-                                        let warnings = [];
-                                        if ((p.is_mandatory_marked || p.is_gtd_required) && !p.is_marking_completed) {
-                                            warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
-                                        }
-                                        if (p.is_marking_completed) {
-                                            warnings.push('<span class="mark-completed">✅ Маркировка + ГТД добавлены</span>');
-                                        }
-                                        if (p.is_country_required) {
-                                            warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
-                                        }
-                                        return `
-                                            <div class="product-item" data-pid="${p.product_id}" data-name="${escapeHtml(p.name)}" data-qty="${p.quantity}">
-                                                <span class="product-name">${escapeHtml(p.name)}</span>
-                                                <div class="warnings">${warnings.join(' ')}</div>
-                                            </div>
-                                        `;
-                                    }).join('')}
-                                </td>
-                                <td class="offerid-cell">${order.products.map(p => `<div class="offerid-item">${escapeHtml(p.offer_id || '-')}</div>`).join('')}</td>
-                                <td class="quantity-cell"><span class="quantity-value">${totalQuantity}</span></td>
-                                <td class="price-cell">${price.toLocaleString('ru-RU')} ₽</td>
-                                <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
-                            </tr>
-                        `;
-                    }).join('');
-                }
-                document.getElementById('ordersContainer').style.display = 'block';
+    function bindProductButtons() {
+        console.log('🔄 bindProductButtons: привязываю обработчики к кнопкам');
+        
+        // Привязка кнопок "Страна"
+        document.querySelectorAll('.country-warning').forEach(btn => {
+            if (btn.dataset.bound === 'true') return;
+            
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                console.log('🌍 КЛИК ПО КНОПКЕ "СТРАНА"');
                 
-                // Обработчики строк
-                document.querySelectorAll('.order-row').forEach(row => {
+                const productDiv = this.closest('.product-item');
+                if (!productDiv) {
+                    console.error('❌ product-item не найден');
+                    showToast('Ошибка: элемент товара не найден', true);
+                    return;
+                }
+                
+                const row = productDiv.closest('.order-row');
+                if (!row) {
+                    console.error('❌ order-row не найден');
+                    showToast('Ошибка: строка заказа не найдена', true);
+                    return;
+                }
+                
+                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+                if (!order) {
+                    console.error('❌ Заказ не найден');
+                    showToast('Ошибка: заказ не найден', true);
+                    return;
+                }
+                
+                const pid = parseInt(productDiv.dataset.pid);
+                const offerId = productDiv.dataset.offerid;
+                const sku = parseInt(productDiv.dataset.sku);
+                
+                console.log('🔍 Поиск товара:', {pid, offerId, sku, orderProducts: order.products.map(p => ({pid: p.product_id, offerId: p.offer_id, sku: p.sku, name: p.name}))});
+                
+                const product = findProductInOrder(order, pid, offerId, sku);
+                
+                if (!product) {
+                    console.error('❌ Товар не найден');
+                    showToast('Ошибка: товар не найден', true);
+                    return;
+                }
+                
+                console.log('✅ Найден товар:', product.name, 'product_id:', product.product_id, 'offer_id:', product.offer_id);
+                await openCountryModal(order, product);
+            });
+            
+            btn.dataset.bound = 'true';
+            btn.style.cursor = 'pointer';
+            console.log('✅ Обработчик привязан к кнопке "Страна"');
+        });
+        
+        // Привязка кнопок "Маркировка"
+        document.querySelectorAll('.mark-warning').forEach(btn => {
+            if (btn.dataset.bound === 'true') return;
+            
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                console.log('🏷️ КЛИК ПО КНОПКЕ "МАРКИРОВКА"');
+                
+                const productDiv = this.closest('.product-item');
+                if (!productDiv) {
+                    console.error('❌ product-item не найден');
+                    showToast('Ошибка: элемент товара не найден', true);
+                    return;
+                }
+                
+                const row = productDiv.closest('.order-row');
+                if (!row) {
+                    console.error('❌ order-row не найден');
+                    showToast('Ошибка: строка заказа не найдена', true);
+                    return;
+                }
+                
+                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+                if (!order) {
+                    console.error('❌ Заказ не найден');
+                    showToast('Ошибка: заказ не найден', true);
+                    return;
+                }
+                
+                const pid = parseInt(productDiv.dataset.pid);
+                const offerId = productDiv.dataset.offerid;
+                const sku = parseInt(productDiv.dataset.sku);
+                
+                console.log('🔍 Поиск товара для маркировки:', {pid, offerId, sku});
+                
+                const product = findProductInOrder(order, pid, offerId, sku);
+                
+                if (!product) {
+                    console.error('❌ Товар не найден');
+                    showToast('Ошибка: товар не найден', true);
+                    return;
+                }
+                
+                console.log('✅ Найден товар для маркировки:', product.name);
+                await openMarkingModal(order, product);
+            });
+            
+            btn.dataset.bound = 'true';
+            btn.style.cursor = 'pointer';
+            console.log('✅ Обработчик привязан к кнопке "Маркировка"');
+        });
+    }
+
+    async function loadOrders() {
+        try {
+            showToast('Загрузка...');
+            const data = await apiRequest('/api/orders');
+            orders = data.orders;
+            const tbody = document.getElementById('ordersList');
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
+            } else {
+                tbody.innerHTML = orders.map((order, i) => {
+                    const price = calcPrice(order);
+                    const hasIssues = order.products.some(p => p.is_mandatory_marked || p.is_gtd_required || p.is_country_required);
+                    const totalQuantity = order.products.reduce((sum, p) => sum + p.quantity, 0);
+                    const isFolderReady = order.is_folder_ready || false;
+                    let rowClass = 'order-row';
+                    if (isFolderReady) rowClass += ' folder-ready';
+                    if (hasIssues && !isFolderReady) rowClass += ' has-issues';
+                    const disabledAttr = (hasIssues || isFolderReady) ? 'disabled' : '';
+                    return `
+                        <tr class="${rowClass}" data-posting-number="${order.posting_number}">
+                            <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
+                            <td class="posting-number">${escapeHtml(order.posting_number)}</td>
+                            <td class="status-cell"><span class="status-badge status-${order.status}">${getStatusText(order.status)}</span></td>
+                            <td class="products-cell">
+                                ${order.products.map(p => {
+                                    let warnings = [];
+                                    if ((p.is_mandatory_marked || p.is_gtd_required) && !p.is_marking_completed) {
+                                        warnings.push('<span class="mark-warning">🏷️ Маркировка + ГТД</span>');
+                                    }
+                                    if (p.is_marking_completed) {
+                                        warnings.push('<span class="mark-completed">✅ Информация добавлена</span>');
+                                    }
+                                    if (p.is_country_required) {
+                                        warnings.push('<span class="country-warning">🌍 Страна</span>');
+                                    }
+                                    return `
+                                        <div class="product-item" data-pid="${p.product_id || 0}" data-offerid="${escapeHtml(p.offer_id || '')}" data-sku="${p.sku || 0}" data-name="${escapeHtml(p.name)}" data-qty="${p.quantity}">
+                                            <span class="product-name">${escapeHtml(p.name)}</span>
+                                            <div class="warnings">${warnings.join(' ')}</div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </td>
+                            <td class="offerid-cell">${order.products.map(p => `<div class="offerid-item">${escapeHtml(p.offer_id || '-')}</div>`).join('')}</td>
+                            <td class="quantity-cell"><span class="quantity-value">${totalQuantity}</span></td>
+                            <td class="price-cell">${price.toLocaleString('ru-RU')} ₽</td>
+                            <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+            document.getElementById('ordersContainer').style.display = 'block';
+            
+            // ПРИВЯЗЫВАЕМ ОБРАБОТЧИКИ СРАЗУ ПОСЛЕ ВСТАВКИ HTML
+            bindProductButtons();
+            
+            // Обработчики для чекбоксов в строках (делегирование на tbody)
+            const ordersList = document.getElementById('ordersList');
+            // Удаляем старый обработчик если есть
+            if (ordersList._changeHandler) {
+                ordersList.removeEventListener('change', ordersList._changeHandler);
+            }
+            const changeHandler = (e) => {
+                if (e.target.classList.contains('order-checkbox')) {
+                    e.stopPropagation();
+                    const row = e.target.closest('.order-row');
+                    syncCheckbox(e.target, row);
+                }
+            };
+            ordersList.addEventListener('change', changeHandler);
+            ordersList._changeHandler = changeHandler;
+            
+            // Обработчик клика по строке (делегирование на tbody)
+            if (ordersList._clickHandler) {
+                ordersList.removeEventListener('click', ordersList._clickHandler);
+            }
+            const clickHandler = (e) => {
+                // Игнорируем клики по кнопкам страны и маркировки
+                if (e.target.classList.contains('country-warning') || 
+                    e.target.classList.contains('mark-warning') ||
+                    e.target.classList.contains('clickable')) {
+                    return;
+                }
+                
+                const row = e.target.closest('.order-row');
+                if (row && e.target.type !== 'checkbox') {
                     const leftCb = row.querySelector('td:first-child .order-checkbox');
                     const rightCb = row.querySelector('td:last-child .order-checkbox');
-                    if (leftCb) {
-                        leftCb.addEventListener('change', (e) => { e.stopPropagation(); syncCheckbox(leftCb, row); });
-                    }
-                    if (rightCb) {
-                        rightCb.addEventListener('change', (e) => { e.stopPropagation(); syncCheckbox(rightCb, row); });
-                    }
-                    row.addEventListener('click', (e) => {
-                        if (e.target.type === 'checkbox' || e.target.classList.contains('clickable')) return;
+                    if (leftCb && !leftCb.disabled) {
                         toggleRow(row, leftCb, rightCb);
-                    });
-                });
-                
-                // Обработчики клика по предупреждениям
-                document.querySelectorAll('.clickable').forEach(el => {
-                    el.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        const action = el.dataset.action;
-                        const productDiv = el.closest('.product-item');
-                        if (productDiv) {
-                            const row = productDiv.closest('.order-row');
-                            const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
-                            const product = order?.products.find(p => p.product_id === parseInt(productDiv.dataset.pid));
-                            if (product) {
-                                if (action === 'marking') {
-                                    await openMarkingModal(order, product);
-                                } else if (action === 'country') {
-                                    await openCountryModal(order, product);
-                                }
-                            }
-                        }
-                    });
-                });
-                
-                const leftAll = document.getElementById('selectAllLeft');
-                const rightAll = document.getElementById('selectAllRight');
-                if (leftAll) {
-                    const newLeft = leftAll.cloneNode(true);
-                    leftAll.parentNode.replaceChild(newLeft, leftAll);
-                    newLeft.onchange = () => selectAll(newLeft.checked);
+                    }
                 }
-                if (rightAll) {
-                    const newRight = rightAll.cloneNode(true);
-                    rightAll.parentNode.replaceChild(newRight, rightAll);
-                    newRight.onchange = () => selectAll(newRight.checked);
-                }
-                
-                updateSelectAll();
-                updateStats();
-                updateIssuesStats();
-                await updateAvailableCodes();
-                showToast(`Загружено ${orders.length} заказов`);
-            } catch (err) {
-                if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
-            }
-        }
-
-        function getStatusText(s) {
-            const map = {
-                'awaiting_packaging': 'Ожидает сборки',
-                'awaiting_deliver': 'Ожидает отгрузки',
-                'delivering': 'В доставке',
-                'delivered': 'Доставлен',
-                'cancelled': 'Отменен'
             };
-            return map[s] || s;
-        }
-
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        async function splitOrders() {
-            const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
-            if (cbs.length === 0) {
-                showToast('Выберите заказы', true);
-                return;
+            ordersList.addEventListener('click', clickHandler);
+            ordersList._clickHandler = clickHandler;
+            
+            // Обработчики для selectAll
+            const leftAll = document.getElementById('selectAllLeft');
+            const rightAll = document.getElementById('selectAllRight');
+            
+            if (leftAll) {
+                const newLeft = leftAll.cloneNode(true);
+                leftAll.parentNode.replaceChild(newLeft, leftAll);
+                newLeft.onchange = () => selectAll(newLeft.checked);
             }
-            const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
-            const toShip = [];
-            for (const num of numbers) {
-                const order = orders.find(o => o.posting_number === num);
-                if (order && order.status === 'awaiting_packaging') {
-                    const valid = order.products.filter(p => !p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required);
-                    if (valid.length) {
-                        toShip.push({
-                            posting_number: num,
-                            products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
-                        });
-                    }
+            if (rightAll) {
+                const newRight = rightAll.cloneNode(true);
+                rightAll.parentNode.replaceChild(newRight, rightAll);
+                newRight.onchange = () => selectAll(newRight.checked);
+            }
+            
+            updateSelectAll();
+            updateStats();
+            updateIssuesStats();
+            await updateAvailableCodes();
+            showToast(`Загружено ${orders.length} заказов`);
+        } catch (err) {
+            if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
+        }
+    }
+
+    function getStatusText(s) {
+        const map = {
+            'awaiting_packaging': 'Ожидает сборки',
+            'awaiting_deliver': 'Ожидает отгрузки',
+            'delivering': 'В доставке',
+            'delivered': 'Доставлен',
+            'cancelled': 'Отменен'
+        };
+        return map[s] || s;
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async function splitOrders() {
+        const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
+        if (cbs.length === 0) {
+            showToast('Выберите заказы', true);
+            return;
+        }
+        const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
+        const toShip = [];
+        for (const num of numbers) {
+            const order = orders.find(o => o.posting_number === num);
+            if (order && order.status === 'awaiting_packaging') {
+                const valid = order.products.filter(p => !p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required);
+                if (valid.length) {
+                    toShip.push({
+                        posting_number: num,
+                        products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
+                    });
                 }
             }
-            if (toShip.length === 0) {
-                showToast('Нет заказов для отправки', true);
-                return;
-            }
-            showOverlay();
-            try {
-                const data = await apiRequest('/api/orders/ship', {
-                    method: 'POST',
-                    body: JSON.stringify({ orders: toShip })
-                });
-                let ok = 0, err = 0;
-                data.results.forEach(r => {
-                    if (r.status === 'success') { ok++; showToast(r.message); }
-                    else { err++; showToast(`Ошибка: ${r.error}`, true); }
-                });
-                showToast(`✅${ok} ${err ? `❌${err}` : ''}`);
-                setTimeout(async () => {
-                    hideOverlay();
-                    await loadOrders();
-                }, 2000);
-            } catch (err) {
-                hideOverlay();
-                if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
-            }
         }
-
-        async function generateAndDownloadLabels() {
-            const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
-            if (cbs.length === 0) {
-                showToast('Выберите заказы', true);
-                return;
-            }
-            
-            const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
-            
-            showOverlay();
-            try {
-                const labelData = await apiRequest('/api/labels/generate', {
-                    method: 'POST',
-                    body: JSON.stringify({ posting_numbers: numbers })
-                });
-                
-                hideOverlay();
-                
-                if (labelData.status === 'ok') {
-                    currentLabelJobId = labelData.job_id;
-                    showToast(labelData.message || 'Запущена обработка этикеток');
-                    startLabelStatusTracking();
-                } else {
-                    showToast(labelData.message || 'Ошибка при запуске генерации этикеток', true);
-                }
-                
-            } catch (err) {
-                hideOverlay();
-                console.error('Ошибка в generateAndDownloadLabels:', err);
-                showToast('Ошибка: ' + err.message, true);
-            }
+        if (toShip.length === 0) {
+            showToast('Нет заказов для отправки', true);
+            return;
         }
-
-        function startLabelStatusTracking() {
-            const statusDiv = document.getElementById('labelStatus');
-            const statusText = document.getElementById('labelStatusText');
-            const progressSpan = document.getElementById('labelProgress');
-            const closeBtn = document.getElementById('labelStatusClose');
-            
-            statusDiv.style.display = 'flex';
-            
-            if (labelStatusInterval) {
-                clearInterval(labelStatusInterval);
-            }
-            
-            labelStatusInterval = setInterval(async () => {
-                if (!currentLabelJobId) return;
-                
-                try {
-                    const data = await apiRequest(`/api/labels/status?job_id=${currentLabelJobId}`);
-                    
-                    if (data.status === 'processing') {
-                        statusText.textContent = `🏷️ Генерация этикеток...`;
-                        progressSpan.textContent = `${data.progress}/${data.total}`;
-                        if (closeBtn) closeBtn.style.display = 'none';
-                    } else if (data.status === 'completed') {
-                        statusText.textContent = `✅ Этикетки сохранены!`;
-                        progressSpan.textContent = `${data.progress}/${data.total}`;
-                        if (closeBtn) closeBtn.style.display = 'none';
-                        clearInterval(labelStatusInterval);
-                        labelStatusInterval = null;
-                        setTimeout(() => {
-                            statusDiv.style.display = 'none';
-                            currentLabelJobId = null;
-                            loadOrders();
-                        }, 3000);
-                    } else if (data.status === 'error') {
-                        statusText.textContent = `❌ Ошибка: ${data.error || 'неизвестная ошибка'}`;
-                        progressSpan.textContent = `${data.progress}/${data.total}`;
-                        if (closeBtn) closeBtn.style.display = 'inline-block';
-                        clearInterval(labelStatusInterval);
-                        labelStatusInterval = null;
-                        setTimeout(() => {
-                            statusDiv.style.display = 'none';
-                            currentLabelJobId = null;
-                            loadOrders();
-                        }, 5000);
-                    } else if (data.status === 'partial') {
-                        statusText.textContent = `⚠️ Частичная ошибка: ${data.error || 'некоторые этикетки не сохранены'}`;
-                        progressSpan.textContent = `${data.progress}/${data.total}`;
-                        if (closeBtn) closeBtn.style.display = 'inline-block';
-                        clearInterval(labelStatusInterval);
-                        labelStatusInterval = null;
-                        setTimeout(() => {
-                            statusDiv.style.display = 'none';
-                            currentLabelJobId = null;
-                            loadOrders();
-                        }, 5000);
-                    }
-                } catch (err) {
-                    console.error('Status check error:', err);
-                }
-            }, 2000);
-            
-            if (closeBtn) {
-                closeBtn.onclick = function() {
-                    statusDiv.style.display = 'none';
-                    if (labelStatusInterval) {
-                        clearInterval(labelStatusInterval);
-                        labelStatusInterval = null;
-                    }
-                    currentLabelJobId = null;
-                    loadOrders();
-                };
-            }
-        }
-
-        async function switchCabinet(cabinet) {
-            try {
-                const colors = { shinorama: '#e8f5e9', trecktrack: '#fff9c4', sevenhundredshin: '#ffebee' };
-                const names = { shinorama: 'Шинорама', trecktrack: 'TreckTrack', sevenhundredshin: '700shin' };
-                
-                document.body.setAttribute('data-cabinet', cabinet);
-                document.body.style.backgroundColor = colors[cabinet];
-                
-                await apiRequest('/api/cabinet/switch', { method: 'POST', body: JSON.stringify({ cabinet }) });
-                
-                const activeSpan = document.getElementById('activeCabinet');
-                if (activeSpan) activeSpan.textContent = names[cabinet];
-                
-                document.querySelectorAll('.cabinet-btn').forEach(btn => {
-                    btn.classList.remove('active');
-                });
-                document.querySelector(`.cabinet-btn[data-cabinet="${cabinet}"]`).classList.add('active');
-                
-                showToast(`Переключено на ${names[cabinet]}`);
-                document.getElementById('ordersContainer').style.display = 'none';
-                document.getElementById('ordersList').innerHTML = '';
-                orders = [];
-                updateStats();
-                await loadOrders();
-            } catch (err) {
-                if (err.message !== 'unauthorized') showToast('Ошибка переключения: ' + err.message, true);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            await loadSettings();
-            
-            if (authToken) {
-                isAuth = true;
-                document.getElementById('authPanel').style.display = 'none';
-                document.getElementById('mainContent').style.display = 'block';
-                updateAvailableCodes();
-                await loadAutoModeStatus();
-                loadOrders();
-            }
-            
-            document.getElementById('authBtn').onclick = checkPassword;
-            document.getElementById('passwordInput').onkeypress = (e) => { if (e.key === 'Enter') checkPassword(); };
-            document.getElementById('loadOrdersBtn').onclick = loadOrders;
-            document.getElementById('loadOrdersBtnBottom').onclick = loadOrders;
-            document.getElementById('splitOrdersBtn').onclick = splitOrders;
-            document.getElementById('splitOrdersBtnBottom').onclick = splitOrders;
-            document.getElementById('generateLabelsBtn').onclick = generateAndDownloadLabels;
-            document.getElementById('generateLabelsBtnBottom').onclick = generateAndDownloadLabels;
-            document.getElementById('markingConfirmBtn').onclick = addMarkings;
-            document.getElementById('markingCancelBtn').onclick = closeAllModals;
-            document.getElementById('countryConfirmBtn').onclick = setCountry;
-            document.getElementById('countryCancelBtn').onclick = closeAllModals;
-            
-            for (const cabinet of Object.keys(cabinetNames)) {
-                const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
-                if (toggle) {
-                    toggle.onchange = (e) => toggleAutoMode(cabinet, e.target.checked);
-                }
-            }
-            
-            const searchInput = document.getElementById('countrySearchInput');
-            if (searchInput) searchInput.addEventListener('input', (e) => filterCountries(e.target.value));
-            
-            document.querySelectorAll('.modal-close, .modal-close-country').forEach(el => {
-                if (el) el.onclick = closeAllModals;
+        showOverlay();
+        try {
+            const data = await apiRequest('/api/orders/ship', {
+                method: 'POST',
+                body: JSON.stringify({ orders: toShip })
             });
+            let ok = 0, err = 0;
+            data.results.forEach(r => {
+                if (r.status === 'success') { ok++; showToast(r.message); }
+                else { err++; showToast(`Ошибка: ${r.error}`, true); }
+            });
+            showToast(`✅${ok} ${err ? `❌${err}` : ''}`);
+            setTimeout(async () => {
+                hideOverlay();
+                await loadOrders();
+            }, 2000);
+        } catch (err) {
+            hideOverlay();
+            if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
+        }
+    }
+
+    async function generateAndDownloadLabels() {
+        const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
+        if (cbs.length === 0) {
+            showToast('Выберите заказы', true);
+            return;
+        }
+        
+        const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
+        
+        showOverlay();
+        try {
+            const labelData = await apiRequest('/api/labels/generate', {
+                method: 'POST',
+                body: JSON.stringify({ posting_numbers: numbers })
+            });
+            
+            hideOverlay();
+            
+            if (labelData.status === 'ok') {
+                currentLabelJobId = labelData.job_id;
+                showToast(labelData.message || 'Запущена обработка этикеток');
+                startLabelStatusTracking();
+            } else {
+                showToast(labelData.message || 'Ошибка при запуске генерации этикеток', true);
+            }
+            
+        } catch (err) {
+            hideOverlay();
+            console.error('Ошибка в generateAndDownloadLabels:', err);
+            showToast('Ошибка: ' + err.message, true);
+        }
+    }
+
+    function startLabelStatusTracking() {
+        const statusDiv = document.getElementById('labelStatus');
+        const statusText = document.getElementById('labelStatusText');
+        const progressSpan = document.getElementById('labelProgress');
+        const closeBtn = document.getElementById('labelStatusClose');
+        
+        statusDiv.style.display = 'flex';
+        
+        if (labelStatusInterval) {
+            clearInterval(labelStatusInterval);
+        }
+        
+        labelStatusInterval = setInterval(async () => {
+            if (!currentLabelJobId) return;
+            
+            try {
+                const data = await apiRequest(`/api/labels/status?job_id=${currentLabelJobId}`);
+                
+                if (data.status === 'processing') {
+                    statusText.textContent = `🏷️ Генерация этикеток...`;
+                    progressSpan.textContent = `${data.progress}/${data.total}`;
+                    if (closeBtn) closeBtn.style.display = 'none';
+                } else if (data.status === 'completed') {
+                    statusText.textContent = `✅ Этикетки сохранены!`;
+                    progressSpan.textContent = `${data.progress}/${data.total}`;
+                    if (closeBtn) closeBtn.style.display = 'none';
+                    clearInterval(labelStatusInterval);
+                    labelStatusInterval = null;
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                        currentLabelJobId = null;
+                        loadOrders();
+                    }, 3000);
+                } else if (data.status === 'error') {
+                    statusText.textContent = `❌ Ошибка: ${data.error || 'неизвестная ошибка'}`;
+                    progressSpan.textContent = `${data.progress}/${data.total}`;
+                    if (closeBtn) closeBtn.style.display = 'inline-block';
+                    clearInterval(labelStatusInterval);
+                    labelStatusInterval = null;
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                        currentLabelJobId = null;
+                        loadOrders();
+                    }, 5000);
+                } else if (data.status === 'partial') {
+                    statusText.textContent = `⚠️ Частичная ошибка: ${data.error || 'некоторые этикетки не сохранены'}`;
+                    progressSpan.textContent = `${data.progress}/${data.total}`;
+                    if (closeBtn) closeBtn.style.display = 'inline-block';
+                    clearInterval(labelStatusInterval);
+                    labelStatusInterval = null;
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                        currentLabelJobId = null;
+                        loadOrders();
+                    }, 5000);
+                }
+            } catch (err) {
+                console.error('Status check error:', err);
+            }
+        }, 2000);
+        
+        if (closeBtn) {
+            closeBtn.onclick = function() {
+                statusDiv.style.display = 'none';
+                if (labelStatusInterval) {
+                    clearInterval(labelStatusInterval);
+                    labelStatusInterval = null;
+                }
+                currentLabelJobId = null;
+                loadOrders();
+            };
+        }
+    }
+
+    async function switchCabinet(cabinet) {
+        try {
+            const colors = { shinorama: '#e8f5e9', trecktrack: '#fff9c4', sevenhundredshin: '#ffebee' };
+            const names = { shinorama: 'Шинорама', trecktrack: 'TreckTrack', sevenhundredshin: '700shin' };
+            
+            document.body.setAttribute('data-cabinet', cabinet);
+            document.body.style.backgroundColor = colors[cabinet];
+            
+            await apiRequest('/api/cabinet/switch', { method: 'POST', body: JSON.stringify({ cabinet }) });
+            
+            const activeSpan = document.getElementById('activeCabinet');
+            if (activeSpan) activeSpan.textContent = names[cabinet];
             
             document.querySelectorAll('.cabinet-btn').forEach(btn => {
-                btn.onclick = () => { if (isAuth) switchCabinet(btn.dataset.cabinet); };
+                btn.classList.remove('active');
             });
+            document.querySelector(`.cabinet-btn[data-cabinet="${cabinet}"]`).classList.add('active');
+            
+            showToast(`Переключено на ${names[cabinet]}`);
+            document.getElementById('ordersContainer').style.display = 'none';
+            document.getElementById('ordersList').innerHTML = '';
+            orders = [];
+            updateStats();
+            await loadOrders();
+        } catch (err) {
+            if (err.message !== 'unauthorized') showToast('Ошибка переключения: ' + err.message, true);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadSettings();
+        
+        if (authToken) {
+            isAuth = true;
+            document.getElementById('authPanel').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            updateAvailableCodes();
+            await loadAutoModeStatus();
+            loadOrders();
+        }
+        
+        document.getElementById('authBtn').onclick = checkPassword;
+        document.getElementById('passwordInput').onkeypress = (e) => { if (e.key === 'Enter') checkPassword(); };
+        document.getElementById('loadOrdersBtn').onclick = loadOrders;
+        document.getElementById('loadOrdersBtnBottom').onclick = loadOrders;
+        document.getElementById('splitOrdersBtn').onclick = splitOrders;
+        document.getElementById('splitOrdersBtnBottom').onclick = splitOrders;
+        document.getElementById('generateLabelsBtn').onclick = generateAndDownloadLabels;
+        document.getElementById('generateLabelsBtnBottom').onclick = generateAndDownloadLabels;
+        document.getElementById('markingConfirmBtn').onclick = addMarkings;
+        document.getElementById('markingCancelBtn').onclick = closeAllModals;
+        document.getElementById('countryConfirmBtn').onclick = setCountry;
+        document.getElementById('countryCancelBtn').onclick = closeAllModals;
+        
+        for (const cabinet of Object.keys(cabinetNames)) {
+            const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
+            if (toggle) {
+                toggle.onchange = (e) => toggleAutoMode(cabinet, e.target.checked);
+            }
+        }
+        
+        const searchInput = document.getElementById('countrySearchInput');
+        if (searchInput) searchInput.addEventListener('input', (e) => filterCountries(e.target.value));
+        
+        document.querySelectorAll('.modal-close, .modal-close-country').forEach(el => {
+            if (el) el.onclick = closeAllModals;
         });
+        
+        document.querySelectorAll('.cabinet-btn').forEach(btn => {
+            btn.onclick = () => { if (isAuth) switchCabinet(btn.dataset.cabinet); };
+        });
+    });
     </script>
 </body>
 </html>

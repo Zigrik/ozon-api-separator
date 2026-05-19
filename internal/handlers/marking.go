@@ -29,13 +29,44 @@ func HandleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("📥 Запрос на добавление маркировки: posting=%s, product=%d, qty=%d",
+	log.Printf("📥 Запрос на добавление маркировки: posting=%s, product_id=%d, qty=%d",
 		req.PostingNumber, req.ProductID, req.Quantity)
 
 	cabinet := config.GetActiveConfig()
 	if cabinet.ClientID == "" || cabinet.APIKey == "" {
 		log.Printf("❌ Кабинет не настроен")
 		http.Error(w, "Cabinet not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Если product_id == 0, пытаемся найти правильный ID
+	if req.ProductID == 0 {
+		log.Printf("⚠️ product_id = 0, пытаемся найти правильный ID...")
+
+		orders, err := services.GetAwaitingPackagingOrders(cabinet)
+		if err == nil {
+			for _, order := range orders {
+				if order.PostingNumber == req.PostingNumber {
+					for _, product := range order.Products {
+						if product.SKU != 0 {
+							req.ProductID = product.SKU
+							log.Printf("🔧 Исправлен product_id для маркировки: используем SKU = %d", req.ProductID)
+							break
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+
+	if req.ProductID <= 0 {
+		errMsg := fmt.Sprintf("Невалидный ProductID: %d. Невозможно добавить маркировку.", req.ProductID)
+		log.Printf("❌ %s", errMsg)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "error",
+			"message": errMsg,
+		})
 		return
 	}
 
