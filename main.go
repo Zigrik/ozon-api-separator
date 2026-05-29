@@ -11,6 +11,7 @@ import (
 	"ozon-api-separator/internal/config"
 	"ozon-api-separator/internal/handlers"
 	"ozon-api-separator/internal/middleware"
+	"ozon-api-separator/internal/models"
 	"ozon-api-separator/internal/services"
 
 	"github.com/Zigrik/license-system/license"
@@ -39,6 +40,9 @@ func runApp() {
 	if err := config.LoadMarkingCodes(); err != nil {
 		log.Printf("Ошибка кодов маркировки: %v", err)
 	}
+
+	// Загружаем сохраненные ошибки этикеток
+	models.LabelErrors.LoadFromFile()
 
 	if sec := os.Getenv("MONITOR_INTERVAL_SEC"); sec != "" {
 		if s, err := strconv.Atoi(sec); err == nil && s > 0 {
@@ -76,6 +80,12 @@ func runApp() {
 	http.HandleFunc("/api/labels/retry", middleware.AuthMiddleware(handlers.HandleRetryLabelGeneration))
 	http.HandleFunc("/api/auto-mode/toggle", middleware.AuthMiddleware(handlers.HandleToggleAutoMode))
 	http.HandleFunc("/api/auto-mode/status", middleware.AuthMiddleware(handlers.HandleGetAutoModeStatus))
+
+	// API для ошибок этикеток
+	http.HandleFunc("/api/labels/failed", middleware.AuthMiddleware(handlers.HandleGetFailedLabels))
+	http.HandleFunc("/api/labels/retry-failed", middleware.AuthMiddleware(handlers.HandleRetryFailedLabels))
+	http.HandleFunc("/api/labels/clear-failed", middleware.AuthMiddleware(handlers.HandleClearFailedLabels))
+	http.HandleFunc("/api/labels/download-failed", middleware.AuthMiddleware(handlers.HandleDownloadFailedLabels))
 
 	port := os.Getenv("PORT")
 	if port == "" {

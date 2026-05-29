@@ -103,10 +103,9 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 	cab := config.GetActiveConfig()
 	dataPath := config.GetDataPathForCabinet(cab.Key)
 
-	log.Printf("⏳ Ожидание 5 секунд перед созданием задач...")
-	time.Sleep(5 * time.Second)
+	log.Printf("⏳ Ожидание 3 секунд перед созданием задач...")
+	time.Sleep(3 * time.Second)
 
-	// Создаём задачи
 	log.Printf("📦 Создание %d задач на этикетки...", total)
 	tasks := make(map[string]int64)
 	var mu sync.Mutex
@@ -138,6 +137,7 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 				mu.Lock()
 				failedOrders = append(failedOrders, o)
 				mu.Unlock()
+				models.LabelErrors.Add(o, cab.Key, cab.Name, err.Error())
 				return
 			}
 			mu.Lock()
@@ -148,7 +148,6 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 	}
 	wg.Wait()
 
-	// Удаляем failed заказы из списка orders
 	var validOrders []string
 	for _, order := range orders {
 		isFailed := false
@@ -176,7 +175,6 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 	log.Printf("⏳ Ожидание 3 секунд перед скачиванием...")
 	time.Sleep(3 * time.Second)
 
-	// Скачиваем этикетки
 	log.Printf("📥 Скачивание %d этикеток...", len(validOrders))
 	completed := 0
 	var downloadedOrders []string
@@ -190,6 +188,7 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 		content, err := GetLabelByTaskIDWithRetry(cab, taskID, order)
 		if err != nil {
 			log.Printf("❌ Ошибка получения этикетки для %s: %v", order, err)
+			models.LabelErrors.Add(order, cab.Key, cab.Name, err.Error())
 			continue
 		}
 
@@ -202,9 +201,11 @@ func ProcessLabelJob(jobID string, queue *models.LabelQueue) {
 
 		if err := SaveLabelToFile(dataPath, folderName, fileName, content); err != nil {
 			log.Printf("❌ Ошибка сохранения этикетки для %s: %v", order, err)
+			models.LabelErrors.Add(order, cab.Key, cab.Name, err.Error())
 		} else {
 			log.Printf("✅ Этикетка сохранена: %s/%s", folderName, fileName)
 			downloadedOrders = append(downloadedOrders, order)
+			models.LabelErrors.Remove(order)
 		}
 
 		completed++

@@ -19,9 +19,21 @@
         </div>
 
         <div id="mainContent" style="display:none;">
-            <div class="header-top">
-                <div class="cabinet-buttons">
-                    <div class="cabinet-item">
+            <div class="cabinet-buttons-wrapper">
+                <div class="cabinet-item">
+                    <div class="cabinet-labels-row">
+                        <div class="cabinet-labels-stats">
+                            <span class="labels-count-to-order" id="toOrderCount_shinorama">0</span>
+                            <span class="labels-sep">/</span>
+                            <span class="labels-count-to-download" id="toDownloadCount_shinorama">0</span>
+                        </div>
+                        <div class="cabinet-labels-actions">
+                            <button class="label-action-btn retry-btn" data-cabinet="shinorama" title="Заказать этикетки">🔄</button>
+                            <button class="label-action-btn download-btn" data-cabinet="shinorama" title="Скачать этикетки">⬇️</button>
+                            <button class="label-action-btn clear-btn" data-cabinet="shinorama" title="Очистить список">🗑️</button>
+                        </div>
+                    </div>
+                    <div class="cabinet-row">
                         <button class="cabinet-btn" data-cabinet="shinorama">Шинорама</button>
                         <div class="cabinet-auto-control">
                             <label class="switch-small">
@@ -31,7 +43,21 @@
                             <span id="autoModeStatus_shinorama" class="auto-mode-indicator-small">выкл</span>
                         </div>
                     </div>
-                    <div class="cabinet-item">
+                </div>
+                <div class="cabinet-item">
+                    <div class="cabinet-labels-row">
+                        <div class="cabinet-labels-stats">
+                            <span class="labels-count-to-order" id="toOrderCount_trecktrack">0</span>
+                            <span class="labels-sep">/</span>
+                            <span class="labels-count-to-download" id="toDownloadCount_trecktrack">0</span>
+                        </div>
+                        <div class="cabinet-labels-actions">
+                            <button class="label-action-btn retry-btn" data-cabinet="trecktrack" title="Заказать этикетки">🔄</button>
+                            <button class="label-action-btn download-btn" data-cabinet="trecktrack" title="Скачать этикетки">⬇️</button>
+                            <button class="label-action-btn clear-btn" data-cabinet="trecktrack" title="Очистить список">🗑️</button>
+                        </div>
+                    </div>
+                    <div class="cabinet-row">
                         <button class="cabinet-btn" data-cabinet="trecktrack">TreckTrack</button>
                         <div class="cabinet-auto-control">
                             <label class="switch-small">
@@ -41,7 +67,21 @@
                             <span id="autoModeStatus_trecktrack" class="auto-mode-indicator-small">выкл</span>
                         </div>
                     </div>
-                    <div class="cabinet-item">
+                </div>
+                <div class="cabinet-item">
+                    <div class="cabinet-labels-row">
+                        <div class="cabinet-labels-stats">
+                            <span class="labels-count-to-order" id="toOrderCount_sevenhundredshin">0</span>
+                            <span class="labels-sep">/</span>
+                            <span class="labels-count-to-download" id="toDownloadCount_sevenhundredshin">0</span>
+                        </div>
+                        <div class="cabinet-labels-actions">
+                            <button class="label-action-btn retry-btn" data-cabinet="sevenhundredshin" title="Заказать этикетки">🔄</button>
+                            <button class="label-action-btn download-btn" data-cabinet="sevenhundredshin" title="Скачать этикетки">⬇️</button>
+                            <button class="label-action-btn clear-btn" data-cabinet="sevenhundredshin" title="Очистить список">🗑️</button>
+                        </div>
+                    </div>
+                    <div class="cabinet-row">
                         <button class="cabinet-btn" data-cabinet="sevenhundredshin">700shin</button>
                         <div class="cabinet-auto-control">
                             <label class="switch-small">
@@ -52,12 +92,13 @@
                         </div>
                     </div>
                 </div>
-                <div class="header-controls">
-                    <div id="labelStatus" class="label-status" style="display:none;">
-                        <span id="labelStatusText"></span>
-                        <span id="labelProgress"></span>
-                        <span id="labelStatusClose" class="label-status-close" style="display:none;">✖</span>
-                    </div>
+            </div>
+
+            <div class="header-controls">
+                <div id="labelStatus" class="label-status" style="display:none;">
+                    <span id="labelStatusText"></span>
+                    <span id="labelProgress"></span>
+                    <span id="labelStatusClose" class="label-status-close" style="display:none;">✖</span>
                 </div>
             </div>
 
@@ -169,7 +210,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.8.3 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.8.4 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -298,6 +339,151 @@
             showToast(`Ошибка: ${err.message}`, true);
             const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
             if (toggle) toggle.checked = !enabled;
+        }
+    }
+
+    // ==================== УПРАВЛЕНИЕ ЭТИКЕТКАМИ ====================
+    let labelStats = {
+        shinorama: { toOrder: 0, toDownload: 0 },
+        trecktrack: { toOrder: 0, toDownload: 0 },
+        sevenhundredshin: { toOrder: 0, toDownload: 0 }
+    };
+
+    async function loadFailedLabels(cabinet) {
+        try {
+            const data = await apiRequest(`/api/labels/failed?cabinet=${cabinet}`);
+            const items = data.items || [];
+            
+            const toOrder = items.filter(item => item.error && (item.error.includes('создать задачу') || item.error.includes('POSTING_NUMBERS'))).length;
+            const toDownload = items.filter(item => item.error && item.error.includes('получить этикетку')).length;
+            
+            labelStats[cabinet] = { toOrder, toDownload };
+            
+            const toOrderSpan = document.getElementById(`toOrderCount_${cabinet}`);
+            const toDownloadSpan = document.getElementById(`toDownloadCount_${cabinet}`);
+            
+            if (toOrderSpan) toOrderSpan.textContent = toOrder;
+            if (toDownloadSpan) toDownloadSpan.textContent = toDownload;
+            
+            return data;
+        } catch (err) {
+            console.error('Ошибка загрузки failed labels:', err);
+            return null;
+        }
+    }
+
+    async function loadAllFailedLabels() {
+        for (const cabinet of Object.keys(cabinetNames)) {
+            await loadFailedLabels(cabinet);
+        }
+    }
+
+    async function retryFailedLabels(cabinet) {
+        const stats = labelStats[cabinet];
+        const total = stats.toOrder + stats.toDownload;
+        
+        if (total === 0) {
+            showToast('Нет ошибочных этикеток для повторного заказа', true);
+            return;
+        }
+        
+        if (!confirm(`Повторить заказ этикеток для ${total} заказов? (заказать: ${stats.toOrder}, скачать: ${stats.toDownload})`)) {
+            return;
+        }
+        
+        showOverlay();
+        try {
+            const data = await apiRequest('/api/labels/retry-failed', {
+                method: 'POST',
+                body: JSON.stringify({ cabinet, items: [] })
+            });
+            
+            if (data.status === 'ok') {
+                showToast(`Запущен повторный заказ ${data.count} этикеток`);
+                if (data.job_id) {
+                    currentLabelJobId = data.job_id;
+                    startLabelStatusTracking();
+                }
+                setTimeout(() => loadFailedLabels(cabinet), 5000);
+                setTimeout(() => loadOrders(), 10000);
+            } else {
+                showToast(data.message || 'Ошибка при повторном заказе', true);
+            }
+        } catch (err) {
+            showToast('Ошибка: ' + err.message, true);
+        } finally {
+            hideOverlay();
+        }
+    }
+
+    async function clearFailedLabels(cabinet) {
+        const stats = labelStats[cabinet];
+        const total = stats.toOrder + stats.toDownload;
+        
+        if (total === 0) {
+            showToast('Нет ошибочных этикеток для очистки', true);
+            return;
+        }
+        
+        if (!confirm(`Очистить список ошибок для ${total} заказов?`)) {
+            return;
+        }
+        
+        try {
+            await apiRequest('/api/labels/clear-failed', {
+                method: 'POST',
+                body: JSON.stringify({ cabinet })
+            });
+            
+            showToast('Список ошибок очищен');
+            await loadFailedLabels(cabinet);
+            await loadOrders();
+        } catch (err) {
+            showToast('Ошибка: ' + err.message, true);
+        }
+    }
+
+    async function downloadFailedLabels(cabinet) {
+        const stats = labelStats[cabinet];
+        
+        if (stats.toDownload === 0) {
+            showToast('Нет этикеток для скачивания', true);
+            return;
+        }
+        
+        showToast(`Запущено скачивание этикеток для ${stats.toDownload} заказов...`);
+        
+        try {
+            const data = await apiRequest(`/api/labels/download-failed?cabinet=${cabinet}`);
+            if (data.status === 'ok') {
+                showToast(`Готово к скачиванию ${data.count} этикеток`);
+                await loadFailedLabels(cabinet);
+                await loadOrders();
+            }
+        } catch (err) {
+            showToast('Ошибка: ' + err.message, true);
+        }
+    }
+
+    function bindLabelControlButtons() {
+        for (const cabinet of Object.keys(cabinetNames)) {
+            const retryBtn = document.querySelector(`.retry-btn[data-cabinet="${cabinet}"]`);
+            if (retryBtn && !retryBtn.dataset.bound) {
+                retryBtn.onclick = () => retryFailedLabels(cabinet);
+                retryBtn.dataset.bound = 'true';
+            }
+            
+            const downloadBtn = document.querySelector(`.download-btn[data-cabinet="${cabinet}"]`);
+            if (downloadBtn && !downloadBtn.dataset.bound) {
+                downloadBtn.onclick = () => downloadFailedLabels(cabinet);
+                downloadBtn.dataset.bound = 'true';
+            }
+            
+            const clearBtn = document.querySelector(`.clear-btn[data-cabinet="${cabinet}"]`);
+            if (clearBtn && !clearBtn.dataset.bound) {
+                clearBtn.onclick = () => clearFailedLabels(cabinet);
+                clearBtn.dataset.bound = 'true';
+            }
         }
     }
 
@@ -509,7 +695,6 @@
             return;
         }
         
-        // ВАЖНО: если product_id === 0, используем sku
         let finalProductId = product.product_id;
         if (finalProductId === 0 && product.sku) {
             finalProductId = product.sku;
@@ -563,7 +748,7 @@
         currentCountryData = {
             postingNumber: order.posting_number,
             productId: product.product_id,
-            sku: product.sku,  // ДОБАВИТЬ ЭТУ СТРОКУ
+            sku: product.sku,
             productName: product.name
         };
         const modal = document.getElementById('countryModal');
@@ -587,7 +772,6 @@
             return;
         }
         
-        // ВАЖНО: если productId === 0, используем sku
         let finalProductId = currentCountryData.productId;
         if (finalProductId === 0 && currentCountryData.sku) {
             finalProductId = currentCountryData.sku;
@@ -648,6 +832,7 @@
             document.getElementById('mainContent').style.display = 'block';
             showToast('Добро пожаловать!');
             await loadAutoModeStatus();
+            await loadAllFailedLabels();
             await loadOrders();
         } catch (err) {
             errDiv.textContent = err.message;
@@ -656,34 +841,20 @@
         }
     }
 
-    // ========== ОСНОВНОЕ ИСПРАВЛЕНИЕ: поиск товара по нескольким полям ==========
     function findProductInOrder(order, pid, offerId, sku) {
-        // Сначала пробуем найти по product_id (если не 0 и не NaN)
         if (pid && pid !== 0 && !isNaN(pid)) {
             const found = order.products.find(p => p.product_id === pid);
             if (found) return found;
         }
         
-        // Затем по offer_id
         if (offerId && offerId !== '') {
             const found = order.products.find(p => p.offer_id === offerId);
             if (found) return found;
         }
         
-        // Затем по sku
         if (sku && sku !== 0 && !isNaN(sku)) {
             const found = order.products.find(p => p.sku === sku);
             if (found) return found;
-        }
-        
-        // Если ничего не нашли, пробуем найти по имени (последний шанс)
-        const productDiv = document.querySelector(`.product-item[data-pid="${pid}"]`);
-        if (productDiv) {
-            const name = productDiv.dataset.name;
-            if (name) {
-                const found = order.products.find(p => p.name === name);
-                if (found) return found;
-            }
         }
         
         return null;
@@ -692,32 +863,27 @@
     function bindProductButtons() {
         console.log('🔄 bindProductButtons: привязываю обработчики к кнопкам');
         
-        // Привязка кнопок "Страна"
         document.querySelectorAll('.country-warning').forEach(btn => {
             if (btn.dataset.bound === 'true') return;
             
             btn.addEventListener('click', async function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                console.log('🌍 КЛИК ПО КНОПКЕ "СТРАНА"');
                 
                 const productDiv = this.closest('.product-item');
                 if (!productDiv) {
-                    console.error('❌ product-item не найден');
                     showToast('Ошибка: элемент товара не найден', true);
                     return;
                 }
                 
                 const row = productDiv.closest('.order-row');
                 if (!row) {
-                    console.error('❌ order-row не найден');
                     showToast('Ошибка: строка заказа не найдена', true);
                     return;
                 }
                 
                 const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
                 if (!order) {
-                    console.error('❌ Заказ не найден');
                     showToast('Ошибка: заказ не найден', true);
                     return;
                 }
@@ -726,51 +892,40 @@
                 const offerId = productDiv.dataset.offerid;
                 const sku = parseInt(productDiv.dataset.sku);
                 
-                console.log('🔍 Поиск товара:', {pid, offerId, sku, orderProducts: order.products.map(p => ({pid: p.product_id, offerId: p.offer_id, sku: p.sku, name: p.name}))});
-                
                 const product = findProductInOrder(order, pid, offerId, sku);
                 
                 if (!product) {
-                    console.error('❌ Товар не найден');
                     showToast('Ошибка: товар не найден', true);
                     return;
                 }
                 
-                console.log('✅ Найден товар:', product.name, 'product_id:', product.product_id, 'offer_id:', product.offer_id);
                 await openCountryModal(order, product);
             });
             
             btn.dataset.bound = 'true';
-            btn.style.cursor = 'pointer';
-            console.log('✅ Обработчик привязан к кнопке "Страна"');
         });
         
-        // Привязка кнопок "Маркировка"
         document.querySelectorAll('.mark-warning').forEach(btn => {
             if (btn.dataset.bound === 'true') return;
             
             btn.addEventListener('click', async function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                console.log('🏷️ КЛИК ПО КНОПКЕ "МАРКИРОВКА"');
                 
                 const productDiv = this.closest('.product-item');
                 if (!productDiv) {
-                    console.error('❌ product-item не найден');
                     showToast('Ошибка: элемент товара не найден', true);
                     return;
                 }
                 
                 const row = productDiv.closest('.order-row');
                 if (!row) {
-                    console.error('❌ order-row не найден');
                     showToast('Ошибка: строка заказа не найдена', true);
                     return;
                 }
                 
                 const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
                 if (!order) {
-                    console.error('❌ Заказ не найден');
                     showToast('Ошибка: заказ не найден', true);
                     return;
                 }
@@ -779,23 +934,17 @@
                 const offerId = productDiv.dataset.offerid;
                 const sku = parseInt(productDiv.dataset.sku);
                 
-                console.log('🔍 Поиск товара для маркировки:', {pid, offerId, sku});
-                
                 const product = findProductInOrder(order, pid, offerId, sku);
                 
                 if (!product) {
-                    console.error('❌ Товар не найден');
                     showToast('Ошибка: товар не найден', true);
                     return;
                 }
                 
-                console.log('✅ Найден товар для маркировки:', product.name);
                 await openMarkingModal(order, product);
             });
             
             btn.dataset.bound = 'true';
-            btn.style.cursor = 'pointer';
-            console.log('✅ Обработчик привязан к кнопке "Маркировка"');
         });
     }
 
@@ -852,12 +1001,9 @@
             }
             document.getElementById('ordersContainer').style.display = 'block';
             
-            // ПРИВЯЗЫВАЕМ ОБРАБОТЧИКИ СРАЗУ ПОСЛЕ ВСТАВКИ HTML
             bindProductButtons();
             
-            // Обработчики для чекбоксов в строках (делегирование на tbody)
             const ordersList = document.getElementById('ordersList');
-            // Удаляем старый обработчик если есть
             if (ordersList._changeHandler) {
                 ordersList.removeEventListener('change', ordersList._changeHandler);
             }
@@ -871,15 +1017,12 @@
             ordersList.addEventListener('change', changeHandler);
             ordersList._changeHandler = changeHandler;
             
-            // Обработчик клика по строке (делегирование на tbody)
             if (ordersList._clickHandler) {
                 ordersList.removeEventListener('click', ordersList._clickHandler);
             }
             const clickHandler = (e) => {
-                // Игнорируем клики по кнопкам страны и маркировки
                 if (e.target.classList.contains('country-warning') || 
-                    e.target.classList.contains('mark-warning') ||
-                    e.target.classList.contains('clickable')) {
+                    e.target.classList.contains('mark-warning')) {
                     return;
                 }
                 
@@ -895,7 +1038,6 @@
             ordersList.addEventListener('click', clickHandler);
             ordersList._clickHandler = clickHandler;
             
-            // Обработчики для selectAll
             const leftAll = document.getElementById('selectAllLeft');
             const rightAll = document.getElementById('selectAllRight');
             
@@ -914,6 +1056,7 @@
             updateStats();
             updateIssuesStats();
             await updateAvailableCodes();
+            
             showToast(`Загружено ${orders.length} заказов`);
         } catch (err) {
             if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
@@ -1048,6 +1191,7 @@
                     setTimeout(() => {
                         statusDiv.style.display = 'none';
                         currentLabelJobId = null;
+                        loadAllFailedLabels();
                         loadOrders();
                     }, 3000);
                 } else if (data.status === 'error') {
@@ -1059,6 +1203,7 @@
                     setTimeout(() => {
                         statusDiv.style.display = 'none';
                         currentLabelJobId = null;
+                        loadAllFailedLabels();
                         loadOrders();
                     }, 5000);
                 } else if (data.status === 'partial') {
@@ -1070,6 +1215,7 @@
                     setTimeout(() => {
                         statusDiv.style.display = 'none';
                         currentLabelJobId = null;
+                        loadAllFailedLabels();
                         loadOrders();
                     }, 5000);
                 }
@@ -1129,6 +1275,7 @@
             document.getElementById('mainContent').style.display = 'block';
             updateAvailableCodes();
             await loadAutoModeStatus();
+            await loadAllFailedLabels();
             loadOrders();
         }
         
@@ -1162,6 +1309,8 @@
         document.querySelectorAll('.cabinet-btn').forEach(btn => {
             btn.onclick = () => { if (isAuth) switchCabinet(btn.dataset.cabinet); };
         });
+        
+        bindLabelControlButtons();
     });
     </script>
 </body>

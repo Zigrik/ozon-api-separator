@@ -10,7 +10,6 @@ import (
 	"ozon-api-separator/internal/services"
 )
 
-// HandleAddMarkingsWithGTD — добавляет маркировку (КИЗ) и отмечает ГТД как отсутствующее
 func HandleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -39,7 +38,6 @@ func HandleAddMarkingsWithGTD(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Если product_id == 0, пытаемся найти правильный ID
 	if req.ProductID == 0 {
 		log.Printf("⚠️ product_id = 0, пытаемся найти правильный ID...")
 

@@ -53,23 +53,19 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 
 	cabinet := config.GetActiveConfig()
 
-	// Если product_id == 0, пытаемся найти правильный ID
 	if req.ProductID == 0 {
 		log.Printf("⚠️ product_id = 0, пытаемся найти правильный ID...")
 
-		// Получаем заказы
 		orders, err := services.GetAwaitingPackagingOrders(cabinet)
 		if err == nil {
 			for _, order := range orders {
 				if order.PostingNumber == req.PostingNumber {
 					for _, product := range order.Products {
-						// Используем SKU если ProductID = 0
 						if product.ProductID == 0 && product.SKU != 0 {
 							req.ProductID = product.SKU
 							log.Printf("🔧 Исправлен product_id: используем SKU = %d", req.ProductID)
 							break
 						}
-						// Если product.SKU совпадает с тем, что прислали как product_id
 						if product.SKU == req.ProductID {
 							req.ProductID = product.ProductID
 							if req.ProductID == 0 {
@@ -85,7 +81,6 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Последняя проверка
 	if req.ProductID <= 0 {
 		errMsg := fmt.Sprintf("Невалидный ProductID: %d. Невозможно установить страну производителя.", req.ProductID)
 		log.Printf("❌ %s", errMsg)
@@ -96,7 +91,6 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Устанавливаем страну производителя
 	err := services.SetCountry(cabinet, req.PostingNumber, req.ProductID, req.CountryCode)
 	if err != nil {
 		log.Printf("❌ Ошибка установки страны: %v", err)
@@ -110,19 +104,16 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 	log.Printf("✅ Страна производителя установлена: %s для заказа %s, товар %d",
 		req.CountryCode, req.PostingNumber, req.ProductID)
 
-	// Если для этого товара требуется ГТД - отмечаем его как отсутствующее
 	orders, err := services.GetAwaitingPackagingOrders(cabinet)
 	if err == nil {
-		prefix := req.PostingNumber[:len(req.PostingNumber)-2] // убираем "-1" в конце
+		prefix := req.PostingNumber[:len(req.PostingNumber)-2]
 		for _, order := range orders {
 			if order.PostingNumber == req.PostingNumber || strings.HasPrefix(order.PostingNumber, prefix) {
 				for _, product := range order.Products {
-					// Сравниваем и по ProductID, и по SKU
 					productIdMatch := product.ProductID == req.ProductID
 					skuMatch := product.SKU == req.ProductID
 
 					if (productIdMatch || skuMatch) && product.IsGtdRequired {
-						// Отмечаем ГТД как отсутствующее
 						err := services.SetGTDAsAbsent(cabinet, req.PostingNumber, req.ProductID)
 						if err != nil {
 							log.Printf("⚠️ Ошибка отметки ГТД как отсутствующего для товара %d: %v", req.ProductID, err)
