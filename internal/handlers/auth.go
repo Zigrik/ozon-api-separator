@@ -7,11 +7,19 @@ import (
 	"ozon-api-separator/internal/config"
 )
 
+// HandleCheckPassword - обработчик проверки пароля
+// Метод: POST
+// Тело запроса: {"password": "string"}
+// Ответ при успехе: {"status": "ok", "token": "string"}
+// Ответ при ошибке: 401 Unauthorized + {"error": "invalid password"}
 func HandleCheckPassword(w http.ResponseWriter, r *http.Request) {
+	// Проверяем метод запроса
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	// Декодируем тело запроса
 	var req struct {
 		Password string `json:"password"`
 	}
@@ -19,34 +27,17 @@ func HandleCheckPassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Проверяем пароль
 	if req.Password == config.AppConfig.Password {
+		// Пароль верный - возвращаем токен для последующих запросов
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "ok",
 			"token":  config.AppConfig.AuthToken,
 		})
 	} else {
+		// Пароль неверный
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid password"})
 	}
-}
-
-func HandleSwitchCabinet(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	var req struct {
-		Cabinet string `json:"cabinet"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	_, exists := config.AppConfig.Cabinets[req.Cabinet]
-	if !exists {
-		http.Error(w, "Cabinet not found", http.StatusNotFound)
-		return
-	}
-	config.AppConfig.ActiveCabinet = req.Cabinet
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "active": req.Cabinet})
 }
