@@ -35,8 +35,10 @@ func runApp() {
 		log.Fatalf("❌ Ошибка конфигурации: %v", err)
 	}
 
+	// Создаем папки
 	os.MkdirAll("templates", 0755)
 	os.MkdirAll("static", 0755)
+	os.MkdirAll("orders", 0755) // папка для состояния заказов
 
 	// Статические файлы
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +57,9 @@ func runApp() {
 	// API с авторизацией
 	http.HandleFunc("/api/cabinet/switch", middleware.AuthMiddleware(handlers.HandleSwitchCabinet))
 	http.HandleFunc("/api/orders", middleware.AuthMiddleware(handlers.HandleGetOrders))
-	http.HandleFunc("/api/orders/ship", middleware.AuthMiddleware(handlers.HandleShipOrders)) // НОВЫЙ МАРШРУТ
+	http.HandleFunc("/api/orders/ship", middleware.AuthMiddleware(handlers.HandleShipOrders))                    // только разделение
+	http.HandleFunc("/api/orders/ship-and-labels", middleware.AuthMiddleware(handlers.HandleShipAndOrderLabels)) // разделение + этикетки
+	http.HandleFunc("/api/orders/state", middleware.AuthMiddleware(handlers.HandleGetOrderState))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -71,8 +75,9 @@ func runApp() {
 	log.Printf("   GET  / - веб-интерфейс")
 	log.Printf("   POST /api/check-password - проверка пароля")
 	log.Printf("   POST /api/cabinet/switch - переключение кабинета")
-	log.Printf("   GET  /api/orders - получение заказов с требованиями")
-	log.Printf("   POST /api/orders/ship - разделение заказов")
+	log.Printf("   GET  /api/orders - получение заказов (обновляет состояние)")
+	log.Printf("   POST /api/orders/ship - разделение заказов (обновляет состояние)")
+	log.Printf("   GET  /api/orders/state - получить состояние заказа")
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
