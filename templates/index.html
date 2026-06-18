@@ -210,7 +210,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.8.4 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.9.1 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -549,9 +549,15 @@
         let markingRequired = 0;
         orders.forEach(order => {
             order.products.forEach(product => {
-                if (product.is_country_required) countryRequired += product.quantity;
-                if ((product.is_mandatory_marked || product.is_gtd_required) && !product.is_marking_completed) {
-                    markingRequired += product.quantity;
+                if (product.requirements?.is_country_required) {
+                    if (!product.country?.is_completed) {
+                        countryRequired += product.quantity;
+                    }
+                }
+                if (product.requirements?.is_mandatory_marked || product.requirements?.is_gtd_required) {
+                    if (!product.marking?.is_completed) {
+                        markingRequired += product.quantity;
+                    }
                 }
             });
         });
@@ -582,7 +588,10 @@
             const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
             if (order) {
                 order.products.forEach(p => {
-                    if (!p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required) {
+                    const isReady = !p.requirements?.is_mandatory_marked && 
+                                   !p.requirements?.is_gtd_required && 
+                                   !p.requirements?.is_country_required;
+                    if (isReady) {
                         selectedProductsCount += p.quantity;
                         selectedTotalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
                     }
@@ -715,19 +724,19 @@
     async function addMarkings() {
         if (!currentMarkingData) return;
         try {
-            const res = await fetch('/api/markings/add-with-gtd', {
+            const res = await fetch('/api/markings/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
                 body: JSON.stringify({
                     posting_number: currentMarkingData.postingNumber,
                     product_id: currentMarkingData.productId,
                     quantity: currentMarkingData.quantity,
-                    gtd_absent: true
+                    codes: [] // коды будут из файла или ввода
                 })
             });
             const data = await res.json();
             if (data.status === 'ok') {
-                showToast(`✅ ${data.message}. Осталось кодов: ${data.remaining}`);
+                showToast(`✅ ${data.message}`);
                 await updateAvailableCodes();
                 closeAllModals();
                 await loadOrders();
@@ -952,40 +961,82 @@
         try {
             showToast('Загрузка...');
             const data = await apiRequest('/api/orders');
-            orders = data.orders;
+            
+            // Обрабатываем ответ от сервера (прежний формат)
+            let ordersData = [];
+            let cabinetName = '';
+            
+            if (data.orders) {
+                ordersData = data.orders;
+                cabinetName = data.cabinet || '';
+            } else {
+                console.error('Неизвестная структура ответа:', data);
+                showToast('Ошибка: неизвестный формат ответа', true);
+                return;
+            }
+            
+            orders = ordersData;
+            
             const tbody = document.getElementById('ordersList');
             if (orders.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
             } else {
                 tbody.innerHTML = orders.map((order, i) => {
-                    const price = calcPrice(order);
-                    const hasIssues = order.products.some(p => p.is_mandatory_marked || p.is_gtd_required || p.is_country_required);
+                    // Проверяем наличие требований у товаров
+                    const hasIssues = order.products.some(p => 
+                        p.requirements?.is_mandatory_marked || 
+                        p.requirements?.is_gtd_required || 
+                        p.requirements?.is_country_required
+                    );
+                    
+                    // Проверяем, разделен ли заказ (из JSON состояния)
+                    const isDivided = order.is_divided || false;
+                    const labelsStatus = order.labels_status || 0;
+                    const isFolderReady = isDivided && labelsStatus >= 2;
+                    
                     const totalQuantity = order.products.reduce((sum, p) => sum + p.quantity, 0);
-                    const isFolderReady = order.is_folder_ready || false;
+                    const price = order.products.reduce((sum, p) => sum + (typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0) * p.quantity, 0);
+                    
                     let rowClass = 'order-row';
                     if (isFolderReady) rowClass += ' folder-ready';
-                    if (hasIssues && !isFolderReady) rowClass += ' has-issues';
-                    const disabledAttr = (hasIssues || isFolderReady) ? 'disabled' : '';
+                    if (hasIssues && !isDivided) rowClass += ' has-issues';
+                    const disabledAttr = (hasIssues || isDivided) ? 'disabled' : '';
+                    
                     return `
                         <tr class="${rowClass}" data-posting-number="${order.posting_number}">
                             <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
                             <td class="posting-number">${escapeHtml(order.posting_number)}</td>
-                            <td class="status-cell"><span class="status-badge status-${order.status}">${getStatusText(order.status)}</span></td>
+                            <td class="status-cell">
+                                <span class="status-badge status-awaiting_packaging">
+                                    ${isDivided ? '✅ Разделён' : 'Ожидает сборки'}
+                                </span>
+                            </td>
                             <td class="products-cell">
                                 ${order.products.map(p => {
                                     let warnings = [];
-                                    if ((p.is_mandatory_marked || p.is_gtd_required) && !p.is_marking_completed) {
-                                        warnings.push('<span class="mark-warning">🏷️ Маркировка + ГТД</span>');
+                                    let priceVal = typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0;
+                                    
+                                    if (p.requirements?.is_mandatory_marked || p.requirements?.is_gtd_required) {
+                                        if (!p.marking?.is_completed) {
+                                            warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
+                                        } else {
+                                            warnings.push('<span class="mark-completed">✅ Информация добавлена</span>');
+                                        }
                                     }
-                                    if (p.is_marking_completed) {
-                                        warnings.push('<span class="mark-completed">✅ Информация добавлена</span>');
-                                    }
-                                    if (p.is_country_required) {
-                                        warnings.push('<span class="country-warning">🌍 Страна</span>');
+                                    if (p.requirements?.is_country_required) {
+                                        if (!p.country?.is_completed) {
+                                            warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
+                                        } else {
+                                            warnings.push(`<span class="mark-completed">✅ Страна: ${p.country?.code || 'указана'}</span>`);
+                                        }
                                     }
                                     return `
-                                        <div class="product-item" data-pid="${p.product_id || 0}" data-offerid="${escapeHtml(p.offer_id || '')}" data-sku="${p.sku || 0}" data-name="${escapeHtml(p.name)}" data-qty="${p.quantity}">
-                                            <span class="product-name">${escapeHtml(p.name)}</span>
+                                        <div class="product-item" data-pid="${p.product_id || 0}" data-offerid="${escapeHtml(p.offer_id || '')}" data-sku="${p.sku || 0}" data-name="${escapeHtml(p.name || '')}" data-qty="${p.quantity}" data-price="${priceVal}">
+                                            <div class="product-row">
+                                                <span class="product-name">${escapeHtml(p.name || 'Товар')}</span>
+                                                <span class="product-qty">×${p.quantity}</span>
+                                                <span class="product-price">${(priceVal * p.quantity).toLocaleString('ru-RU')} ₽</span>
+                                            </div>
                                             <div class="warnings">${warnings.join(' ')}</div>
                                         </div>
                                     `;
@@ -999,59 +1050,12 @@
                     `;
                 }).join('');
             }
+            
             document.getElementById('ordersContainer').style.display = 'block';
+            document.getElementById('activeCabinet').textContent = cabinetName || 'Активный кабинет';
             
+            // Привязываем обработчики
             bindProductButtons();
-            
-            const ordersList = document.getElementById('ordersList');
-            if (ordersList._changeHandler) {
-                ordersList.removeEventListener('change', ordersList._changeHandler);
-            }
-            const changeHandler = (e) => {
-                if (e.target.classList.contains('order-checkbox')) {
-                    e.stopPropagation();
-                    const row = e.target.closest('.order-row');
-                    syncCheckbox(e.target, row);
-                }
-            };
-            ordersList.addEventListener('change', changeHandler);
-            ordersList._changeHandler = changeHandler;
-            
-            if (ordersList._clickHandler) {
-                ordersList.removeEventListener('click', ordersList._clickHandler);
-            }
-            const clickHandler = (e) => {
-                if (e.target.classList.contains('country-warning') || 
-                    e.target.classList.contains('mark-warning')) {
-                    return;
-                }
-                
-                const row = e.target.closest('.order-row');
-                if (row && e.target.type !== 'checkbox') {
-                    const leftCb = row.querySelector('td:first-child .order-checkbox');
-                    const rightCb = row.querySelector('td:last-child .order-checkbox');
-                    if (leftCb && !leftCb.disabled) {
-                        toggleRow(row, leftCb, rightCb);
-                    }
-                }
-            };
-            ordersList.addEventListener('click', clickHandler);
-            ordersList._clickHandler = clickHandler;
-            
-            const leftAll = document.getElementById('selectAllLeft');
-            const rightAll = document.getElementById('selectAllRight');
-            
-            if (leftAll) {
-                const newLeft = leftAll.cloneNode(true);
-                leftAll.parentNode.replaceChild(newLeft, leftAll);
-                newLeft.onchange = () => selectAll(newLeft.checked);
-            }
-            if (rightAll) {
-                const newRight = rightAll.cloneNode(true);
-                rightAll.parentNode.replaceChild(newRight, rightAll);
-                newRight.onchange = () => selectAll(newRight.checked);
-            }
-            
             updateSelectAll();
             updateStats();
             updateIssuesStats();
@@ -1091,8 +1095,12 @@
         const toShip = [];
         for (const num of numbers) {
             const order = orders.find(o => o.posting_number === num);
-            if (order && order.status === 'awaiting_packaging') {
-                const valid = order.products.filter(p => !p.is_mandatory_marked && !p.is_gtd_required && !p.is_country_required);
+            if (order) {
+                const valid = order.products.filter(p => 
+                    !p.requirements?.is_mandatory_marked && 
+                    !p.requirements?.is_gtd_required && 
+                    !p.requirements?.is_country_required
+                );
                 if (valid.length) {
                     toShip.push({
                         posting_number: num,
@@ -1135,28 +1143,49 @@
         }
         
         const numbers = [...new Set(Array.from(cbs).map(cb => cb.dataset.postingNumber))];
+        const toShip = [];
+        for (const num of numbers) {
+            const order = orders.find(o => o.posting_number === num);
+            if (order) {
+                const valid = order.products.filter(p => 
+                    !p.requirements?.is_mandatory_marked && 
+                    !p.requirements?.is_gtd_required && 
+                    !p.requirements?.is_country_required
+                );
+                if (valid.length) {
+                    toShip.push({
+                        posting_number: num,
+                        products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
+                    });
+                }
+            }
+        }
+        if (toShip.length === 0) {
+            showToast('Нет заказов для отправки', true);
+            return;
+        }
         
         showOverlay();
         try {
-            const labelData = await apiRequest('/api/labels/generate', {
+            const data = await apiRequest('/api/orders/ship-and-labels', {
                 method: 'POST',
-                body: JSON.stringify({ posting_numbers: numbers })
+                body: JSON.stringify({ orders: toShip })
             });
             
             hideOverlay();
             
-            if (labelData.status === 'ok') {
-                currentLabelJobId = labelData.job_id;
-                showToast(labelData.message || 'Запущена обработка этикеток');
-                startLabelStatusTracking();
-            } else {
-                showToast(labelData.message || 'Ошибка при запуске генерации этикеток', true);
-            }
-            
+            let ok = 0, err = 0;
+            data.results.forEach(r => {
+                if (r.status === 'success') { ok++; showToast(r.message); }
+                else { err++; showToast(`Ошибка: ${r.error}`, true); }
+            });
+            showToast(`✅${ok} ${err ? `❌${err}` : ''}`);
+            setTimeout(async () => {
+                await loadOrders();
+            }, 3000);
         } catch (err) {
             hideOverlay();
-            console.error('Ошибка в generateAndDownloadLabels:', err);
-            showToast('Ошибка: ' + err.message, true);
+            if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
         }
     }
 
@@ -1261,6 +1290,7 @@
             orders = [];
             updateStats();
             await loadOrders();
+            await loadFailedLabels(cabinet);
         } catch (err) {
             if (err.message !== 'unauthorized') showToast('Ошибка переключения: ' + err.message, true);
         }

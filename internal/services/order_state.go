@@ -6,10 +6,15 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
+	"ozon-api-separator/internal/config"
 	"ozon-api-separator/internal/models"
 )
+
+// Глобальный мьютекс для защиты доступа к JSON файлу
+var stateMutex sync.Mutex
 
 // GetOrdersFilePath - возвращает путь к файлу состояния заказов
 func GetOrdersFilePath() string {
@@ -20,6 +25,9 @@ func GetOrdersFilePath() string {
 
 // LoadCabinetState - загружает состояние кабинета из файла
 func LoadCabinetState(cabinetKey string) (*models.CabinetState, error) {
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
 	filePath := GetOrdersFilePath()
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -46,6 +54,9 @@ func LoadCabinetState(cabinetKey string) (*models.CabinetState, error) {
 
 // SaveCabinetState - сохраняет состояние кабинета в файл
 func SaveCabinetState(state *models.CabinetState) error {
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
 	filePath := GetOrdersFilePath()
 	state.LastUpdated = time.Now()
 
@@ -71,13 +82,11 @@ func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error
 	state.CabinetKey = cabinetKey
 	state.CabinetName = cabinetName
 
-	// Создаем карту существующих заказов в состоянии
 	existingOrdersMap := make(map[string]*models.OrderState)
 	for i := range state.Orders {
 		existingOrdersMap[state.Orders[i].PostingNumber] = &state.Orders[i]
 	}
 
-	// Создаем карту новых заказов из API
 	newOrdersMap := make(map[string]models.Posting)
 	for _, order := range orders {
 		newOrdersMap[order.PostingNumber] = order
@@ -85,17 +94,13 @@ func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error
 
 	updatedOrders := make([]models.OrderState, 0)
 
-	// 1. Обновляем или добавляем заказы из API
 	for _, order := range orders {
 		var orderState models.OrderState
 
 		if existing, exists := existingOrdersMap[order.PostingNumber]; exists {
-			// Заказ уже есть - обновляем продукты
 			orderState = *existing
 			orderState.Products = convertProducts(order.Products)
-			// Логируем только если это действительно новый заказ
 		} else {
-			// Новый заказ
 			orderState = models.OrderState{
 				PostingNumber: order.PostingNumber,
 				IsDivided:     false,
@@ -110,10 +115,8 @@ func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error
 		updatedOrders = append(updatedOrders, orderState)
 	}
 
-	// 2. Сохраняем заказы, которые уже НЕ в API
 	for postingNumber, existing := range existingOrdersMap {
 		if _, exists := newOrdersMap[postingNumber]; !exists {
-			// Заказ уже не активен, сохраняем в истории
 			updatedOrders = append(updatedOrders, *existing)
 		}
 	}
@@ -143,6 +146,7 @@ func UpdateOrderAfterShip(cabinetKey, postingNumber string, shipments []string, 
 						IsOrdered:    false,
 						IsDownloaded: false,
 						FilePath:     "",
+						RetryCount:   0,
 						Error:        nil,
 					},
 				})
@@ -234,6 +238,170 @@ func GetOrderState(cabinetKey, postingNumber string) (*models.OrderState, error)
 	}
 
 	return nil, fmt.Errorf("заказ %s не найден", postingNumber)
+}
+
+// UpdateCountryStatus - обновляет статус страны в состоянии
+func UpdateCountryStatus(cabinetKey, postingNumber string, productID int64, countryCode string) error {
+	state, err := LoadCabinetState(cabinetKey)
+	if err != nil {
+		return err
+	}
+
+	for i := range state.Orders {
+		if state.Orders[i].PostingNumber == postingNumber {
+			for j := range state.Orders[i].Products {
+				if state.Orders[i].Products[j].ProductID == productID {
+					state.Orders[i].Products[j].Country.IsCompleted = true
+					code := countryCode
+					state.Orders[i].Products[j].Country.Code = &code
+					state.Orders[i].Products[j].Country.Error = nil
+					log.Printf("🌍 Страна %s установлена для товара %d в заказе %s", countryCode, productID, postingNumber)
+					break
+				}
+			}
+			break
+		}
+	}
+
+	return SaveCabinetState(state)
+}
+
+// UpdateGTDStatus - обновляет статус ГТД в состоянии
+func UpdateGTDStatus(cabinetKey, postingNumber string, productID int64) error {
+	state, err := LoadCabinetState(cabinetKey)
+	if err != nil {
+		return err
+	}
+
+	for i := range state.Orders {
+		if state.Orders[i].PostingNumber == postingNumber {
+			for j := range state.Orders[i].Products {
+				if state.Orders[i].Products[j].ProductID == productID {
+					state.Orders[i].Products[j].Marking.GtdAbsent = true
+					log.Printf("📄 ГТД отмечено как отсутствующее для товара %d в заказе %s", productID, postingNumber)
+					break
+				}
+			}
+			break
+		}
+	}
+
+	return SaveCabinetState(state)
+}
+
+// UpdateMarkingStatus - обновляет статус маркировки в состоянии
+func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, codes []string) error {
+	state, err := LoadCabinetState(cabinetKey)
+	if err != nil {
+		return err
+	}
+
+	for i := range state.Orders {
+		if state.Orders[i].PostingNumber == postingNumber {
+			for j := range state.Orders[i].Products {
+				if state.Orders[i].Products[j].ProductID == productID {
+					state.Orders[i].Products[j].Marking.IsCompleted = true
+					state.Orders[i].Products[j].Marking.Codes = codes
+					state.Orders[i].Products[j].Marking.Error = nil
+					log.Printf("🏷️ Маркировка добавлена для товара %d в заказе %s (%d кодов)", productID, postingNumber, len(codes))
+					break
+				}
+			}
+			break
+		}
+	}
+
+	return SaveCabinetState(state)
+}
+
+// processPendingLabels - обрабатывает заказы с labels_status = 1
+func processPendingLabels() error {
+	state, err := LoadCabinetState("")
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for i := range state.Orders {
+		if state.Orders[i].LabelsStatus != 1 {
+			continue
+		}
+
+		if !state.Orders[i].IsDivided || len(state.Orders[i].Shipments) == 0 {
+			continue
+		}
+
+		found = true
+		order := &state.Orders[i]
+		allOrdered := true
+		hasErrors := false
+		maxRetries := 5
+
+		log.Printf("📦 Обработка заказа %s (подзаказов: %d)", order.PostingNumber, len(order.Shipments))
+
+		for j := range order.Shipments {
+			shipment := &order.Shipments[j]
+
+			if shipment.Label.IsOrdered {
+				continue
+			}
+
+			if shipment.Label.RetryCount >= maxRetries {
+				hasErrors = true
+				allOrdered = false
+				errMsg := fmt.Sprintf("превышено число попыток (%d)", maxRetries)
+				shipment.Label.Error = &errMsg
+				log.Printf("⚠️ Подзаказ %s: превышено число попыток (%d)", shipment.PostingNumber, maxRetries)
+				continue
+			}
+
+			cabinet := config.GetActiveConfig()
+			if cabinet == nil {
+				return fmt.Errorf("активный кабинет не найден")
+			}
+
+			taskID, err := CreateLabelTask(cabinet, []string{shipment.PostingNumber})
+			if err != nil {
+				shipment.Label.RetryCount++
+				errMsg := err.Error()
+				shipment.Label.Error = &errMsg
+				hasErrors = true
+				allOrdered = false
+				log.Printf("❌ Ошибка заказа этикетки для %s (попытка %d): %v", shipment.PostingNumber, shipment.Label.RetryCount, err)
+			} else {
+				shipment.Label.TaskID = taskID
+				shipment.Label.IsOrdered = true
+				shipment.Label.RetryCount = 0
+				shipment.Label.Error = nil
+				log.Printf("✅ Этикетка для %s заказана, task_id=%d", shipment.PostingNumber, taskID)
+			}
+		}
+
+		if allOrdered {
+			order.LabelsStatus = 2
+			log.Printf("✅ Заказ %s: все этикетки заказаны (labels_status=2)", order.PostingNumber)
+		} else if hasErrors {
+			allFailed := true
+			for _, s := range order.Shipments {
+				if !s.Label.IsOrdered && s.Label.RetryCount < maxRetries {
+					allFailed = false
+					break
+				}
+			}
+			if allFailed {
+				order.LabelsStatus = 4
+				log.Printf("❌ Заказ %s: все подзаказы завершились ошибкой (labels_status=4)", order.PostingNumber)
+			} else {
+				log.Printf("⏳ Заказ %s: частичная ошибка, повторим позже (labels_status=1)", order.PostingNumber)
+			}
+		}
+	}
+
+	if !found {
+		log.Println("ℹ️ Нет заказов с labels_status=1")
+	}
+
+	return SaveCabinetState(state)
 }
 
 // convertProducts - конвертирует продукты из API в состояние

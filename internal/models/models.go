@@ -164,7 +164,7 @@ type OrderState struct {
 	IsDivided     bool            `json:"is_divided"`
 	Products      []ProductState  `json:"products"`
 	Shipments     []ShipmentState `json:"shipments"`
-	LabelsStatus  int             `json:"labels_status"` // 0-3
+	LabelsStatus  int             `json:"labels_status"` // 0-4
 	Errors        []OrderError    `json:"errors"`
 }
 
@@ -213,6 +213,7 @@ type LabelState struct {
 	IsOrdered    bool    `json:"is_ordered"`
 	IsDownloaded bool    `json:"is_downloaded"`
 	FilePath     string  `json:"file_path"`
+	RetryCount   int     `json:"retry_count"`
 	Error        *string `json:"error"`
 }
 
@@ -222,6 +223,57 @@ type OrderError struct {
 	Operation     string `json:"operation"`
 	Error         string `json:"error"`
 	Timestamp     string `json:"timestamp"`
+}
+
+// ============ МОДЕЛИ ДЛЯ СТРАНЫ, ГТД И МАРКИРОВКИ ============
+
+// CountryInfo - информация о стране
+type CountryInfo struct {
+	Name string `json:"name"`
+	Code string `json:"code"`
+}
+
+// SetCountryRequest - запрос на установку страны производителя
+type SetCountryRequest struct {
+	PostingNumber  string `json:"posting_number"`
+	ProductID      int64  `json:"product_id"`
+	CountryISOCode string `json:"country_iso_code"`
+}
+
+// ExemplarCreateRequest - запрос на получение exemplar_id
+type ExemplarCreateRequest struct {
+	PostingNumber string `json:"posting_number"`
+}
+
+// ExemplarCreateResponse - ответ с exemplar_id
+type ExemplarCreateResponse struct {
+	PostingNumber string `json:"posting_number"`
+	Products      []struct {
+		ProductID int64 `json:"product_id"`
+		Exemplars []struct {
+			ExemplarID int64 `json:"exemplar_id"`
+		} `json:"exemplars"`
+	} `json:"products"`
+}
+
+// Mark - марка (КИЗ)
+type Mark struct {
+	Mark     string `json:"mark"`
+	MarkType string `json:"mark_type"`
+}
+
+// MarkingSetRequest - запрос на установку маркировки
+type MarkingSetRequest struct {
+	PostingNumber string `json:"posting_number"`
+	Products      []struct {
+		ProductID int64 `json:"product_id"`
+		Exemplars []struct {
+			ExemplarID   int64  `json:"exemplar_id"`
+			IsGTDAbsent  bool   `json:"is_gtd_absent"`
+			IsRNPTAbsent bool   `json:"is_rnpt_absent"`
+			Marks        []Mark `json:"marks"`
+		} `json:"exemplars"`
+	} `json:"products"`
 }
 
 // ============ МЕТОДЫ ДЛЯ РАБОТЫ С СОСТОЯНИЕМ ============

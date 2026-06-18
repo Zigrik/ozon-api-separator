@@ -10,6 +10,7 @@ import (
 	"ozon-api-separator/internal/config"
 	"ozon-api-separator/internal/handlers"
 	"ozon-api-separator/internal/middleware"
+	"ozon-api-separator/internal/services"
 
 	"github.com/Zigrik/license-system/license"
 )
@@ -35,12 +36,12 @@ func runApp() {
 		log.Fatalf("❌ Ошибка конфигурации: %v", err)
 	}
 
-	// Создаем папки
 	os.MkdirAll("templates", 0755)
 	os.MkdirAll("static", 0755)
-	os.MkdirAll("orders", 0755) // папка для состояния заказов
+	os.MkdirAll("orders", 0755)
 
-	// Статические файлы
+	services.StartLabelWorker()
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "templates/index.html")
 	})
@@ -57,9 +58,15 @@ func runApp() {
 	// API с авторизацией
 	http.HandleFunc("/api/cabinet/switch", middleware.AuthMiddleware(handlers.HandleSwitchCabinet))
 	http.HandleFunc("/api/orders", middleware.AuthMiddleware(handlers.HandleGetOrders))
-	http.HandleFunc("/api/orders/ship", middleware.AuthMiddleware(handlers.HandleShipOrders))                    // только разделение
-	http.HandleFunc("/api/orders/ship-and-labels", middleware.AuthMiddleware(handlers.HandleShipAndOrderLabels)) // разделение + этикетки
+	http.HandleFunc("/api/orders/ship", middleware.AuthMiddleware(handlers.HandleShipOrders))
+	http.HandleFunc("/api/orders/ship-and-labels", middleware.AuthMiddleware(handlers.HandleShipAndOrderLabels))
 	http.HandleFunc("/api/orders/state", middleware.AuthMiddleware(handlers.HandleGetOrderState))
+
+	// API для страны, ГТД и маркировки
+	http.HandleFunc("/api/countries/list", middleware.AuthMiddleware(handlers.HandleGetCountries))
+	http.HandleFunc("/api/countries/set", middleware.AuthMiddleware(handlers.HandleSetCountry))
+	http.HandleFunc("/api/gtd/absent", middleware.AuthMiddleware(handlers.HandleSetGTDAbsent))
+	http.HandleFunc("/api/markings/add", middleware.AuthMiddleware(handlers.HandleAddMarkings))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -75,9 +82,14 @@ func runApp() {
 	log.Printf("   GET  / - веб-интерфейс")
 	log.Printf("   POST /api/check-password - проверка пароля")
 	log.Printf("   POST /api/cabinet/switch - переключение кабинета")
-	log.Printf("   GET  /api/orders - получение заказов (обновляет состояние)")
-	log.Printf("   POST /api/orders/ship - разделение заказов (обновляет состояние)")
+	log.Printf("   GET  /api/orders - получение заказов")
+	log.Printf("   POST /api/orders/ship - разделение заказов")
+	log.Printf("   POST /api/orders/ship-and-labels - разделение + заказ этикеток")
 	log.Printf("   GET  /api/orders/state - получить состояние заказа")
+	log.Printf("   GET  /api/countries/list - список стран")
+	log.Printf("   POST /api/countries/set - установка страны")
+	log.Printf("   POST /api/gtd/absent - отметить ГТД как отсутствующее")
+	log.Printf("   POST /api/markings/add - добавить маркировку")
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 

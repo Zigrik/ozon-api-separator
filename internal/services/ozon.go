@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"ozon-api-separator/internal/models"
@@ -78,7 +80,6 @@ func GetAwaitingPackagingOrders(cab *models.CabinetConfig) ([]models.Posting, er
 		return nil, fmt.Errorf("ошибка парсинга ответа Ozon: %w", err)
 	}
 
-	// Обогащаем заказы информацией о требованиях
 	for i := range response.Result.Postings {
 		posting := &response.Result.Postings[i]
 
@@ -135,10 +136,7 @@ func ShipOrder(cab *models.CabinetConfig, postingNumber string, packages []model
 	return response.Result, nil
 }
 
-// ============ ФУНКЦИИ ДЛЯ ЭТИКЕТОК ============
-
-// CreateLabelTask - создает задачу на генерацию этикеток для заказов
-// Возвращает ID задачи (task_id) для отслеживания статуса
+// CreateLabelTask - создает задачу на генерацию этикеток
 func CreateLabelTask(cab *models.CabinetConfig, postingNumbers []string) (int64, error) {
 	url := "https://api-seller.ozon.ru/v2/posting/fbs/package-label/create"
 
@@ -163,8 +161,30 @@ func CreateLabelTask(cab *models.CabinetConfig, postingNumbers []string) (int64,
 	return response.Result.Tasks[0].TaskID, nil
 }
 
+// ============ ФУНКЦИИ ДЛЯ ЭТИКЕТОК ============
+
+// GetLabelStatus - проверяет статус задачи по ID
+func GetLabelStatus(cab *models.CabinetConfig, taskID int64) (string, error) {
+	url := "https://api-seller.ozon.ru/v1/posting/fbs/package-label/get"
+
+	req := models.GetLabelRequest{
+		TaskID: taskID,
+	}
+
+	respBody, err := MakeOzonRequest(cab, "POST", url, req)
+	if err != nil {
+		return "", err
+	}
+
+	var response models.GetLabelResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return "", fmt.Errorf("ошибка парсинга ответа: %w", err)
+	}
+
+	return response.Result.Status, nil
+}
+
 // GetLabelByTaskID - получает этикетку по ID задачи
-// Возвращает содержимое PDF-файла и ошибку, если этикетка не готова
 func GetLabelByTaskID(cab *models.CabinetConfig, taskID int64) ([]byte, error) {
 	url := "https://api-seller.ozon.ru/v1/posting/fbs/package-label/get"
 
@@ -182,7 +202,6 @@ func GetLabelByTaskID(cab *models.CabinetConfig, taskID int64) ([]byte, error) {
 		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
 	}
 
-	// Проверяем статус этикетки
 	if response.Result.Status != "completed" {
 		return nil, fmt.Errorf("этикетка ещё не готова, статус: %s", response.Result.Status)
 	}
@@ -211,7 +230,6 @@ func GetLabelByTaskID(cab *models.CabinetConfig, taskID int64) ([]byte, error) {
 }
 
 // GetLabelByTaskIDWithRetry - получает этикетку с повторными попытками
-// Делает до 5 попыток с интервалом 2 секунды
 func GetLabelByTaskIDWithRetry(cab *models.CabinetConfig, taskID int64, maxRetries int, retryDelay time.Duration) ([]byte, error) {
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		pdfData, err := GetLabelByTaskID(cab, taskID)
@@ -219,7 +237,6 @@ func GetLabelByTaskIDWithRetry(cab *models.CabinetConfig, taskID int64, maxRetri
 			return pdfData, nil
 		}
 
-		// Если этикетка не готова - пробуем снова
 		if attempt < maxRetries {
 			time.Sleep(retryDelay)
 			continue
@@ -230,21 +247,17 @@ func GetLabelByTaskIDWithRetry(cab *models.CabinetConfig, taskID int64, maxRetri
 }
 
 // SaveLabelToFile - сохраняет PDF этикетки в файл
-// Путь: dataPath/postingNumber/postingNumber.pdf
 func SaveLabelToFile(cab *models.CabinetConfig, postingNumber string, pdfData []byte) (string, error) {
-	// Определяем путь для сохранения
 	dataPath := cab.DataPath
 	if dataPath == "" {
 		dataPath = filepath.Join("data", cab.Key)
 	}
 
-	// Создаем папку для заказа
 	folderPath := filepath.Join(dataPath, postingNumber)
 	if err := os.MkdirAll(folderPath, 0755); err != nil {
 		return "", fmt.Errorf("ошибка создания папки: %w", err)
 	}
 
-	// Сохраняем файл
 	filePath := filepath.Join(folderPath, postingNumber+".pdf")
 	if err := os.WriteFile(filePath, pdfData, 0644); err != nil {
 		return "", fmt.Errorf("ошибка сохранения файла: %w", err)
@@ -253,23 +266,234 @@ func SaveLabelToFile(cab *models.CabinetConfig, postingNumber string, pdfData []
 	return filePath, nil
 }
 
-// GetLabelStatus - проверяет статус задачи по ID
-func GetLabelStatus(cab *models.CabinetConfig, taskID int64) (string, error) {
-	url := "https://api-seller.ozon.ru/v1/posting/fbs/package-label/get"
+// ============ ФУНКЦИИ ДЛЯ СТРАНЫ ============
 
-	req := models.GetLabelRequest{
-		TaskID: taskID,
-	}
-
-	respBody, err := MakeOzonRequest(cab, "POST", url, req)
+// GetCountriesList - получает список стран производителей
+func GetCountriesList(cab *models.CabinetConfig) ([]models.CountryInfo, error) {
+	url := "https://api-seller.ozon.ru/v2/posting/fbs/product/country/list"
+	respBody, err := MakeOzonRequest(cab, "POST", url, map[string]interface{}{})
 	if err != nil {
-		return "", err
+		return getDefaultCountries(), nil
 	}
 
-	var response models.GetLabelResponse
+	var response struct {
+		Result []struct {
+			Name           string `json:"name"`
+			CountryISOCode string `json:"country_iso_code"`
+		} `json:"result"`
+	}
+
 	if err := json.Unmarshal(respBody, &response); err != nil {
-		return "", fmt.Errorf("ошибка парсинга ответа: %w", err)
+		return getDefaultCountries(), nil
 	}
 
-	return response.Result.Status, nil
+	countries := make([]models.CountryInfo, 0)
+	for _, c := range response.Result {
+		if c.Name != "" && c.CountryISOCode != "" {
+			countries = append(countries, models.CountryInfo{
+				Name: c.Name,
+				Code: c.CountryISOCode,
+			})
+		}
+	}
+
+	if len(countries) == 0 {
+		return getDefaultCountries(), nil
+	}
+	return countries, nil
+}
+
+func getDefaultCountries() []models.CountryInfo {
+	return []models.CountryInfo{
+		{Name: "Россия", Code: "RU"},
+		{Name: "Китай", Code: "CN"},
+		{Name: "Германия", Code: "DE"},
+		{Name: "Япония", Code: "JP"},
+		{Name: "США", Code: "US"},
+		{Name: "Италия", Code: "IT"},
+		{Name: "Франция", Code: "FR"},
+		{Name: "Польша", Code: "PL"},
+		{Name: "Турция", Code: "TR"},
+		{Name: "Вьетнам", Code: "VN"},
+	}
+}
+
+// SetCountry - устанавливает страну производителя
+func SetCountry(cab *models.CabinetConfig, postingNumber string, productID int64, countryCode string) error {
+	url := "https://api-seller.ozon.ru/v2/posting/fbs/product/country/set"
+	countryCode = strings.TrimSpace(strings.ToUpper(countryCode))
+
+	req := models.SetCountryRequest{
+		PostingNumber:  postingNumber,
+		ProductID:      productID,
+		CountryISOCode: countryCode,
+	}
+
+	_, err := MakeOzonRequest(cab, "POST", url, req)
+	if err != nil {
+		return err
+	}
+
+	if err := UpdateCountryStatus(cab.Key, postingNumber, productID, countryCode); err != nil {
+		log.Printf("⚠️ Ошибка обновления состояния страны: %v", err)
+	}
+
+	return nil
+}
+
+// ============ ФУНКЦИИ ДЛЯ ГТД ============
+
+// getExemplarIDs - получает exemplar_id для товаров в заказе
+func getExemplarIDs(cab *models.CabinetConfig, postingNumber string) (*models.ExemplarCreateResponse, error) {
+	body, err := MakeOzonRequest(cab, "POST",
+		"https://api-seller.ozon.ru/v6/fbs/posting/product/exemplar/create-or-get",
+		models.ExemplarCreateRequest{PostingNumber: postingNumber})
+	if err != nil {
+		return nil, err
+	}
+
+	var resp models.ExemplarCreateResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// SetGTDAsAbsent - отмечает ГТД как отсутствующее
+func SetGTDAsAbsent(cab *models.CabinetConfig, postingNumber string, productID int64) error {
+	exemplars, err := getExemplarIDs(cab, postingNumber)
+	if err != nil {
+		return fmt.Errorf("ошибка получения exemplar_id: %w", err)
+	}
+
+	var exemplarIDs []int64
+	for _, p := range exemplars.Products {
+		if p.ProductID == productID {
+			for _, e := range p.Exemplars {
+				exemplarIDs = append(exemplarIDs, e.ExemplarID)
+			}
+			break
+		}
+	}
+
+	if len(exemplarIDs) == 0 {
+		return fmt.Errorf("не найдены exemplar_id для товара %d в заказе %s", productID, postingNumber)
+	}
+
+	type GTDExemplar struct {
+		ExemplarID   int64 `json:"exemplar_id"`
+		IsGTDAbsent  bool  `json:"is_gtd_absent"`
+		IsRNPTAbsent bool  `json:"is_rnpt_absent"`
+	}
+
+	type GTDProductExemplar struct {
+		ProductID int64         `json:"product_id"`
+		Exemplars []GTDExemplar `json:"exemplars"`
+	}
+
+	request := struct {
+		PostingNumber string               `json:"posting_number"`
+		Products      []GTDProductExemplar `json:"products"`
+	}{
+		PostingNumber: postingNumber,
+		Products: []GTDProductExemplar{
+			{
+				ProductID: productID,
+				Exemplars: make([]GTDExemplar, 0),
+			},
+		},
+	}
+
+	for _, id := range exemplarIDs {
+		request.Products[0].Exemplars = append(request.Products[0].Exemplars, GTDExemplar{
+			ExemplarID:   id,
+			IsGTDAbsent:  true,
+			IsRNPTAbsent: true,
+		})
+	}
+
+	_, err = MakeOzonRequest(cab, "POST", "https://api-seller.ozon.ru/v6/fbs/posting/product/exemplar/set", request)
+	if err != nil {
+		return err
+	}
+
+	if err := UpdateGTDStatus(cab.Key, postingNumber, productID); err != nil {
+		log.Printf("⚠️ Ошибка обновления состояния ГТД: %v", err)
+	}
+
+	return nil
+}
+
+// ============ ФУНКЦИИ ДЛЯ МАРКИРОВКИ ============
+
+// AddMarkingsForOrder - добавляет маркировку для товара
+func AddMarkingsForOrder(cab *models.CabinetConfig, postingNumber string, productID int64, quantity int, codes []string) error {
+	exemplars, err := getExemplarIDs(cab, postingNumber)
+	if err != nil {
+		return fmt.Errorf("ошибка получения exemplar_id: %w", err)
+	}
+
+	var ids []int64
+	for _, p := range exemplars.Products {
+		if p.ProductID == productID {
+			for _, e := range p.Exemplars {
+				ids = append(ids, e.ExemplarID)
+			}
+			break
+		}
+	}
+
+	if len(ids) < quantity {
+		return fmt.Errorf("недостаточно exemplar_id для товара %d: нужно %d, доступно %d", productID, quantity, len(ids))
+	}
+
+	marks := make([]models.Mark, quantity)
+	for i := 0; i < quantity; i++ {
+		marks[i] = models.Mark{
+			Mark:     codes[i],
+			MarkType: "mandatory_mark",
+		}
+	}
+
+	request := models.MarkingSetRequest{
+		PostingNumber: postingNumber,
+		Products: []struct {
+			ProductID int64 `json:"product_id"`
+			Exemplars []struct {
+				ExemplarID   int64         `json:"exemplar_id"`
+				IsGTDAbsent  bool          `json:"is_gtd_absent"`
+				IsRNPTAbsent bool          `json:"is_rnpt_absent"`
+				Marks        []models.Mark `json:"marks"`
+			} `json:"exemplars"`
+		}{
+			{
+				ProductID: productID,
+				Exemplars: []struct {
+					ExemplarID   int64         `json:"exemplar_id"`
+					IsGTDAbsent  bool          `json:"is_gtd_absent"`
+					IsRNPTAbsent bool          `json:"is_rnpt_absent"`
+					Marks        []models.Mark `json:"marks"`
+				}{
+					{
+						ExemplarID:   ids[0],
+						IsGTDAbsent:  true,
+						IsRNPTAbsent: true,
+						Marks:        marks,
+					},
+				},
+			},
+		},
+	}
+
+	_, err = MakeOzonRequest(cab, "POST", "https://api-seller.ozon.ru/v6/fbs/posting/product/exemplar/set", request)
+	if err != nil {
+		return err
+	}
+
+	if err := UpdateMarkingStatus(cab.Key, postingNumber, productID, codes); err != nil {
+		log.Printf("⚠️ Ошибка обновления состояния маркировки: %v", err)
+	}
+
+	return nil
 }

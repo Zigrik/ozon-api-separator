@@ -1,0 +1,748 @@
+{
+  "cabinet_key": "shinorama",
+  "cabinet_name": "Шинорама",
+  "last_updated": "2026-06-18T16:54:45.9792678+03:00",
+  "orders": [
+    {
+      "posting_number": "0178174211-0093-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "106245",
+          "quantity": 2,
+          "requirements": {
+            "is_mandatory_marked": true,
+            "is_gtd_required": true,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "84671359-0205-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "117052",
+          "quantity": 4,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "51646297-0345-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "18413",
+          "quantity": 2,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "91617799-0285-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "103878",
+          "quantity": 4,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0133278289-0055-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "106891",
+          "quantity": 4,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "51213159-0366-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "119499",
+          "quantity": 2,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0156812004-0129-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "115753",
+          "quantity": 3,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "08427112-0158-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "121734",
+          "quantity": 4,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0226016913-0098-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "38536",
+          "quantity": 5,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "99238394-0282-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "8667",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "40275314-0200-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "41373",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0146644271-0158-3",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "106694",
+          "quantity": 2,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "94359910-0187-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "106245",
+          "quantity": 2,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0123200252-0492-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "106694",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "41035687-0845-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "112474",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "40549538-0196-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "15030",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0127630591-0117-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "123125",
+          "quantity": 5,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        },
+        {
+          "product_id": 0,
+          "offer_id": "116606",
+          "quantity": 5,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0142849443-0246-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "75826",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "99238394-0281-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "8667",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0141595512-0141-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "73610",
+          "quantity": 4,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0238626386-0016-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "106699",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "69874816-0413-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "106746",
+          "quantity": 2,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "65279928-0132-1",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "106699",
+          "quantity": 1,
+          "requirements": {
+            "is_mandatory_marked": false,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    },
+    {
+      "posting_number": "0216463185-0016-2",
+      "is_divided": false,
+      "products": [
+        {
+          "product_id": 0,
+          "offer_id": "60713",
+          "quantity": 4,
+          "requirements": {
+            "is_mandatory_marked": true,
+            "is_gtd_required": false,
+            "is_country_required": false
+          },
+          "marking": {
+            "is_completed": false,
+            "codes": [],
+            "gtd_absent": false,
+            "error": null
+          },
+          "country": {
+            "is_completed": false,
+            "code": null,
+            "error": null
+          }
+        }
+      ],
+      "shipments": [],
+      "labels_status": 0,
+      "errors": []
+    }
+  ]
+}

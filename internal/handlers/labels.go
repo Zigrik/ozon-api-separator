@@ -172,6 +172,11 @@ func HandleDownloadLabel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Обновляем состояние в JSON файле
+	if err := services.UpdateOrderLabel(cabinet.Key, postingNumber, taskID, true, filePath); err != nil {
+		log.Printf("⚠️ Ошибка обновления состояния этикетки: %v", err)
+	}
+
 	log.Printf("✅ Этикетка сохранена: %s", filePath)
 
 	// Отдаем PDF клиенту
