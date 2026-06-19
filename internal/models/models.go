@@ -8,26 +8,25 @@ import (
 
 // ============ КОНФИГУРАЦИЯ ============
 
-// CabinetConfig - конфигурация кабинета продавца Ozon
 type CabinetConfig struct {
-	Name     string // Название кабинета (например, "Шинорама")
-	ClientID string // Client ID из личного кабинета Ozon
-	APIKey   string // API Key из личного кабинета Ozon
-	Key      string // Уникальный ключ кабинета (shinorama, trecktrack, sevenhundredshin)
-	DataPath string // Путь для сохранения этикеток
+	Name     string
+	ClientID string
+	APIKey   string
+	Key      string
+	DataPath string
+	Color    string
+	BgColor  string
 }
 
-// AppConfig - основная конфигурация приложения
 type AppConfig struct {
-	Password      string                    // Пароль для доступа к веб-интерфейсу
-	Cabinets      map[string]*CabinetConfig // Словарь всех доступных кабинетов
-	ActiveCabinet string                    // Ключ активного в данный момент кабинета
-	AuthToken     string                    // Токен для автоматической авторизации
+	Password      string
+	Cabinets      map[string]*CabinetConfig
+	ActiveCabinet string
+	AuthToken     string
 }
 
 // ============ МОДЕЛИ OZON API ============
 
-// Posting - заказ (отгрузка) из Ozon API
 type Posting struct {
 	PostingNumber string        `json:"posting_number"`
 	Status        string        `json:"status"`
@@ -38,7 +37,6 @@ type Posting struct {
 	IsFolderReady bool          `json:"is_folder_ready"`
 }
 
-// Product - товар в составе заказа
 type Product struct {
 	SKU                int64       `json:"sku"`
 	Name               string      `json:"name"`
@@ -52,14 +50,12 @@ type Product struct {
 	IsMarkingCompleted bool        `json:"is_marking_completed,omitempty"`
 }
 
-// Requirements - требования к товарам в заказе (из Ozon API)
 type Requirements struct {
 	ProductsRequiringGTD           []int64 `json:"products_requiring_gtd,omitempty"`
 	ProductsRequiringCountry       []int64 `json:"products_requiring_country,omitempty"`
 	ProductsRequiringMandatoryMark []int64 `json:"products_requiring_mandatory_mark,omitempty"`
 }
 
-// GetPrice - возвращает цену как float64
 func (p *Product) GetPrice() float64 {
 	switch v := p.Price.(type) {
 	case float64:
@@ -75,14 +71,12 @@ func (p *Product) GetPrice() float64 {
 	}
 }
 
-// PostingsListResponse - ответ Ozon API на запрос списка отгрузок
 type PostingsListResponse struct {
 	Result struct {
 		Postings []Posting `json:"postings"`
 	} `json:"result"`
 }
 
-// PostingsFilter - фильтр для запроса списка отгрузок
 type PostingsFilter struct {
 	Filter struct {
 		Status     string     `json:"status,omitempty"`
@@ -95,36 +89,30 @@ type PostingsFilter struct {
 
 // ============ МОДЕЛИ ДЛЯ РАЗДЕЛЕНИЯ ЗАКАЗОВ ============
 
-// ShipRequest - запрос на разделение заказа
 type ShipRequest struct {
 	PostingNumber string        `json:"posting_number"`
 	Packages      []ShipPackage `json:"packages"`
 }
 
-// ShipPackage - упаковка (отдельное отправление)
 type ShipPackage struct {
 	Products []ShipProduct `json:"products"`
 }
 
-// ShipProduct - товар в упаковке
 type ShipProduct struct {
 	ProductID int64 `json:"product_id"`
 	Quantity  int   `json:"quantity"`
 }
 
-// ShipResponse - ответ на разделение заказа
 type ShipResponse struct {
 	Result []string `json:"result"`
 }
 
 // ============ МОДЕЛИ ДЛЯ ЭТИКЕТОК ============
 
-// CreateLabelRequest - запрос на создание задачи для этикеток
 type CreateLabelRequest struct {
 	PostingNumbers []string `json:"posting_number"`
 }
 
-// CreateLabelResponse - ответ на создание задачи для этикеток
 type CreateLabelResponse struct {
 	Result struct {
 		Tasks []struct {
@@ -134,12 +122,10 @@ type CreateLabelResponse struct {
 	} `json:"result"`
 }
 
-// GetLabelRequest - запрос на получение этикетки по ID задачи
 type GetLabelRequest struct {
 	TaskID int64 `json:"task_id"`
 }
 
-// GetLabelResponse - ответ на получение этикетки
 type GetLabelResponse struct {
 	Result struct {
 		Error   string `json:"error"`
@@ -150,7 +136,6 @@ type GetLabelResponse struct {
 
 // ============ МОДЕЛИ ДЛЯ СОСТОЯНИЯ ЗАКАЗОВ ============
 
-// CabinetState - состояние всех заказов в кабинете
 type CabinetState struct {
 	CabinetKey  string       `json:"cabinet_key"`
 	CabinetName string       `json:"cabinet_name"`
@@ -158,19 +143,19 @@ type CabinetState struct {
 	Orders      []OrderState `json:"orders"`
 }
 
-// OrderState - состояние одного заказа
 type OrderState struct {
-	PostingNumber string          `json:"posting_number"`
-	IsDivided     bool            `json:"is_divided"`
-	Products      []ProductState  `json:"products"`
-	Shipments     []ShipmentState `json:"shipments"`
-	LabelsStatus  int             `json:"labels_status"` // 0-4
-	Errors        []OrderError    `json:"errors"`
+	PostingNumber   string          `json:"posting_number"`
+	IsReadyForSplit bool            `json:"is_ready_for_split"`
+	IsDivided       bool            `json:"is_divided"`
+	Products        []ProductState  `json:"products"`
+	Shipments       []ShipmentState `json:"shipments"`
+	LabelsStatus    int             `json:"labels_status"`
+	Errors          []OrderError    `json:"errors"`
 }
 
-// ProductState - состояние товара в заказе
 type ProductState struct {
 	ProductID    int64              `json:"product_id"`
+	SKU          int64              `json:"sku"`
 	OfferID      string             `json:"offer_id"`
 	Quantity     int                `json:"quantity"`
 	Requirements ProductRequirement `json:"requirements"`
@@ -178,14 +163,12 @@ type ProductState struct {
 	Country      CountryState       `json:"country"`
 }
 
-// ProductRequirement - требования к товару (для состояния)
 type ProductRequirement struct {
 	IsMandatoryMarked bool `json:"is_mandatory_marked"`
 	IsGtdRequired     bool `json:"is_gtd_required"`
 	IsCountryRequired bool `json:"is_country_required"`
 }
 
-// MarkingState - состояние маркировки
 type MarkingState struct {
 	IsCompleted bool     `json:"is_completed"`
 	Codes       []string `json:"codes"`
@@ -193,21 +176,18 @@ type MarkingState struct {
 	Error       *string  `json:"error"`
 }
 
-// CountryState - состояние страны производителя
 type CountryState struct {
 	IsCompleted bool    `json:"is_completed"`
 	Code        *string `json:"code"`
 	Error       *string `json:"error"`
 }
 
-// ShipmentState - состояние подзаказа (отправления)
 type ShipmentState struct {
 	PostingNumber string     `json:"posting_number"`
 	ProductIDs    []int64    `json:"product_ids"`
 	Label         LabelState `json:"label"`
 }
 
-// LabelState - состояние этикетки
 type LabelState struct {
 	TaskID       int64   `json:"task_id"`
 	IsOrdered    bool    `json:"is_ordered"`
@@ -217,7 +197,6 @@ type LabelState struct {
 	Error        *string `json:"error"`
 }
 
-// OrderError - ошибка по заказу
 type OrderError struct {
 	PostingNumber string `json:"posting_number"`
 	Operation     string `json:"operation"`
@@ -227,25 +206,21 @@ type OrderError struct {
 
 // ============ МОДЕЛИ ДЛЯ СТРАНЫ, ГТД И МАРКИРОВКИ ============
 
-// CountryInfo - информация о стране
 type CountryInfo struct {
 	Name string `json:"name"`
 	Code string `json:"code"`
 }
 
-// SetCountryRequest - запрос на установку страны производителя
 type SetCountryRequest struct {
 	PostingNumber  string `json:"posting_number"`
 	ProductID      int64  `json:"product_id"`
 	CountryISOCode string `json:"country_iso_code"`
 }
 
-// ExemplarCreateRequest - запрос на получение exemplar_id
 type ExemplarCreateRequest struct {
 	PostingNumber string `json:"posting_number"`
 }
 
-// ExemplarCreateResponse - ответ с exemplar_id
 type ExemplarCreateResponse struct {
 	PostingNumber string `json:"posting_number"`
 	Products      []struct {
@@ -256,13 +231,11 @@ type ExemplarCreateResponse struct {
 	} `json:"products"`
 }
 
-// Mark - марка (КИЗ)
 type Mark struct {
 	Mark     string `json:"mark"`
 	MarkType string `json:"mark_type"`
 }
 
-// MarkingSetRequest - запрос на установку маркировки
 type MarkingSetRequest struct {
 	PostingNumber string `json:"posting_number"`
 	Products      []struct {
@@ -278,7 +251,6 @@ type MarkingSetRequest struct {
 
 // ============ МЕТОДЫ ДЛЯ РАБОТЫ С СОСТОЯНИЕМ ============
 
-// GetFolderName - возвращает имя папки для сохранения этикеток
 func (o *OrderState) GetFolderName() string {
 	parts := strings.Split(o.PostingNumber, "-")
 	if len(parts) > 1 {
@@ -287,7 +259,6 @@ func (o *OrderState) GetFolderName() string {
 	return o.PostingNumber
 }
 
-// IsReadyForShipment - готов ли товар к отправке
 func (p *ProductState) IsReadyForShipment() bool {
 	if !p.Requirements.IsMandatoryMarked &&
 		!p.Requirements.IsGtdRequired &&
@@ -310,7 +281,6 @@ func (p *ProductState) IsReadyForShipment() bool {
 	return true
 }
 
-// GetReadyProducts - возвращает товары готовые к отправке
 func (o *OrderState) GetReadyProducts() []ProductState {
 	result := make([]ProductState, 0)
 	for _, p := range o.Products {
@@ -321,12 +291,10 @@ func (o *OrderState) GetReadyProducts() []ProductState {
 	return result
 }
 
-// HasReadyProducts - есть ли товары готовые к отправке
 func (o *OrderState) HasReadyProducts() bool {
 	return len(o.GetReadyProducts()) > 0
 }
 
-// CalculateLabelsStatus - вычисляет статус этикеток
 func (o *OrderState) CalculateLabelsStatus() int {
 	if len(o.Shipments) == 0 {
 		return 0

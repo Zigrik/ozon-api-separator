@@ -36,7 +36,6 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("✅ Загружено %d заказов из Ozon API", len(orders))
 
-	// Сохраняем состояние в файл (в фоне)
 	go func() {
 		if err := services.UpdateOrders(cabinet.Key, cabinet.Name, orders); err != nil {
 			log.Printf("⚠️ Ошибка сохранения состояния: %v", err)
@@ -50,22 +49,18 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleShipOrders - обработчик разделения заказов (без этикеток)
+// HandleShipOrders - обработчик разделения заказов (БЕЗ этикеток)
 func HandleShipOrders(w http.ResponseWriter, r *http.Request) {
-	shipOrders(w, r, 0) // labels_status = 0 (этикетки не нужны)
+	shipOrders(w, r, 1, false)
 }
 
-// HandleShipAndOrderLabels - обработчик разделения заказов с заказом этикеток
+// HandleShipAndOrderLabels - обработчик разделения заказов С заказом этикеток
 func HandleShipAndOrderLabels(w http.ResponseWriter, r *http.Request) {
-	shipOrders(w, r, 1) // labels_status = 1 (этикетки заказаны)
+	shipOrders(w, r, 1, true)
 }
 
 // shipOrders - общая функция для разделения заказов
-// needLabels:
-//
-//	0 - только разделение (labels_status = 0)
-//	1 - разделение + заказ этикеток (labels_status = 1)
-func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int) {
+func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int, wakeWorker bool) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -75,8 +70,9 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int) {
 		Orders []struct {
 			PostingNumber string `json:"posting_number"`
 			Products      []struct {
-				ProductID int64 `json:"product_id"`
-				Quantity  int   `json:"quantity"`
+				ProductID int64  `json:"product_id"`
+				OfferID   string `json:"offer_id"`
+				Quantity  int    `json:"quantity"`
 			} `json:"products"`
 		} `json:"orders"`
 	}
@@ -90,10 +86,19 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int) {
 	cabinet := config.GetActiveConfig()
 	results := make([]map[string]interface{}, 0)
 
-	if needLabels == 1 {
+	if needLabels == 1 && wakeWorker {
 		log.Printf("📦 Начало разделения и заказа этикеток для %d заказов", len(req.Orders))
 	} else {
 		log.Printf("📦 Начало разделения %d заказов", len(req.Orders))
+	}
+
+	orders, err := services.GetAwaitingPackagingOrders(cabinet)
+	if err != nil {
+		log.Printf("⚠️ Ошибка получения заказов для исправления product_id: %v", err)
+	}
+	ordersMap := make(map[string][]models.Product)
+	for _, order := range orders {
+		ordersMap[order.PostingNumber] = order.Products
 	}
 
 	for _, orderReq := range req.Orders {
@@ -101,17 +106,52 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int) {
 			"posting_number": orderReq.PostingNumber,
 		}
 
-		// 1. Формируем упаковки
 		packages := make([]models.ShipPackage, 0)
 		productIDs := make([]int64, 0)
 
 		for _, product := range orderReq.Products {
-			productIDs = append(productIDs, product.ProductID)
+			productID := product.ProductID
+
+			if productID == 0 {
+				if products, exists := ordersMap[orderReq.PostingNumber]; exists {
+					for _, p := range products {
+						if p.OfferID == product.OfferID {
+							productID = p.ProductID
+							if productID == 0 {
+								productID = p.SKU
+							}
+							break
+						}
+					}
+					if productID == 0 && product.OfferID == "" {
+						for _, p := range products {
+							if p.SKU == product.ProductID {
+								productID = p.ProductID
+								if productID == 0 {
+									productID = p.SKU
+								}
+								break
+							}
+						}
+					}
+				}
+				if productID == 0 {
+					log.Printf("❌ Не удалось исправить ProductID=0 для заказа %s (offer_id=%s)", orderReq.PostingNumber, product.OfferID)
+					result["status"] = "error"
+					result["error"] = fmt.Sprintf("Не удалось определить товар для заказа %s", orderReq.PostingNumber)
+					results = append(results, result)
+					continue
+				} else {
+					log.Printf("⚠️ ProductID был 0, исправлен на %d для заказа %s (offer_id=%s)", productID, orderReq.PostingNumber, product.OfferID)
+				}
+			}
+
+			productIDs = append(productIDs, productID)
 			for i := 0; i < product.Quantity; i++ {
 				packages = append(packages, models.ShipPackage{
 					Products: []models.ShipProduct{
 						{
-							ProductID: product.ProductID,
+							ProductID: productID,
 							Quantity:  1,
 						},
 					},
@@ -126,7 +166,6 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int) {
 			continue
 		}
 
-		// 2. Разделяем заказ
 		shipments, err := services.ShipOrder(cabinet, orderReq.PostingNumber, packages)
 		if err != nil {
 			log.Printf("❌ Ошибка разделения заказа %s: %v", orderReq.PostingNumber, err)
@@ -138,54 +177,29 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int) {
 
 		log.Printf("✅ Заказ %s разделён на %d отправлений", orderReq.PostingNumber, len(shipments))
 
-		// 3. Обновляем состояние: is_divided = true, labels_status = needLabels
 		if err := services.UpdateOrderAfterShip(cabinet.Key, orderReq.PostingNumber, shipments, productIDs, needLabels); err != nil {
 			log.Printf("⚠️ Ошибка сохранения состояния после разделения: %v", err)
 		}
 
-		// 4. Если needLabels = 1 - заказываем этикетки для каждого подзаказа
-		var labelResults []map[string]interface{}
-		if needLabels == 1 {
-			labelResults = make([]map[string]interface{}, 0)
-			for _, shipment := range shipments {
-				labelResult := map[string]interface{}{
-					"posting_number": shipment,
-				}
-
-				taskID, err := services.CreateLabelTask(cabinet, []string{shipment})
-				if err != nil {
-					log.Printf("❌ Ошибка заказа этикетки для %s: %v", shipment, err)
-					labelResult["status"] = "error"
-					labelResult["error"] = err.Error()
-				} else {
-					log.Printf("🏷️ Этикетка для %s заказана, task_id: %d", shipment, taskID)
-
-					if err := services.UpdateOrderLabel(cabinet.Key, shipment, taskID, true, ""); err != nil {
-						log.Printf("⚠️ Ошибка сохранения состояния этикетки: %v", err)
-					}
-
-					labelResult["status"] = "success"
-					labelResult["task_id"] = taskID
-				}
-				labelResults = append(labelResults, labelResult)
-			}
+		if wakeWorker {
+			services.WakeLabelWorker()
+			log.Printf("🔔 Пробужден воркер заказа этикеток для заказа %s", orderReq.PostingNumber)
+		} else {
+			log.Printf("📌 Заказ %s разделен, этикетки будут заказаны позже (labels_status=1)", orderReq.PostingNumber)
 		}
 
-		// 5. Формируем результат
 		result["status"] = "success"
 		result["shipments"] = shipments
 
-		if needLabels == 1 {
-			result["labels"] = labelResults
-			result["message"] = fmt.Sprintf("Заказ разделён на %d отправлений, этикетки заказаны", len(shipments))
+		if wakeWorker {
+			result["message"] = fmt.Sprintf("Заказ разделён на %d отправлений, этикетки будут заказаны автоматически", len(shipments))
 		} else {
-			result["message"] = fmt.Sprintf("Заказ разделён на %d отправлений", len(shipments))
+			result["message"] = fmt.Sprintf("Заказ разделён на %d отправлений (этикетки не заказаны)", len(shipments))
 		}
 
 		results = append(results, result)
 	}
 
-	// Подсчитываем статистику
 	successCount := 0
 	errorCount := 0
 	for _, r := range results {
@@ -196,7 +210,7 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int) {
 		}
 	}
 
-	if needLabels == 1 {
+	if wakeWorker {
 		log.Printf("📊 Разделение и заказ этикеток завершены: успешно %d, ошибок %d", successCount, errorCount)
 	} else {
 		log.Printf("📊 Разделение завершено: успешно %d, ошибок %d", successCount, errorCount)
@@ -233,5 +247,69 @@ func HandleGetOrderState(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
 		"order":  orderState,
+	})
+}
+
+// HandleGetStats - обработчик получения статистики по кабинету (в штуках товаров)
+func HandleGetStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cabinetKey := r.URL.Query().Get("cabinet")
+	if cabinetKey == "" {
+		http.Error(w, "cabinet is required", http.StatusBadRequest)
+		return
+	}
+
+	if _, exists := config.AppConfig.Cabinets[cabinetKey]; !exists {
+		http.Error(w, "Cabinet not found", http.StatusNotFound)
+		return
+	}
+
+	state, err := services.LoadCabinetState(cabinetKey)
+	if err != nil {
+		log.Printf("❌ Ошибка загрузки состояния: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	total := 0      // всего товаров в заказах
+	divided := 0    // товаров в разделенных заказах
+	toOrder := 0    // товаров, требующих заказа этикеток
+	toDownload := 0 // товаров, требующих скачивания этикеток
+
+	for _, order := range state.Orders {
+		// Считаем общее количество товаров в заказе
+		orderTotal := 0
+		for _, product := range order.Products {
+			orderTotal += product.Quantity
+		}
+		total += orderTotal
+
+		if order.IsDivided {
+			divided += orderTotal
+		}
+
+		// Если заказ разделен, считаем товары по статусам этикеток
+		if order.IsDivided {
+			switch order.LabelsStatus {
+			case 1:
+				toOrder += orderTotal
+			case 2:
+				toDownload += orderTotal
+			case 3:
+				// уже скачаны - не считаем
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":      "ok",
+		"total":       total,
+		"divided":     divided,
+		"to_order":    toOrder,
+		"to_download": toDownload,
 	})
 }

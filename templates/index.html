@@ -19,77 +19,72 @@
         </div>
 
         <div id="mainContent" style="display:none;">
+            <!-- Блок кабинетов со статистикой -->
             <div class="cabinet-buttons-wrapper">
-                <div class="cabinet-item">
+                <div class="cabinet-item" data-cabinet="shinorama">
                     <div class="cabinet-labels-row">
                         <div class="cabinet-labels-stats">
-                            <span class="labels-count-to-order" id="toOrderCount_shinorama">0</span>
-                            <span class="labels-sep">/</span>
-                            <span class="labels-count-to-download" id="toDownloadCount_shinorama">0</span>
-                        </div>
-                        <div class="cabinet-labels-actions">
-                            <button class="label-action-btn retry-btn" data-cabinet="shinorama" title="Заказать этикетки">🔄</button>
-                            <button class="label-action-btn download-btn" data-cabinet="shinorama" title="Скачать этикетки">⬇️</button>
-                            <button class="label-action-btn clear-btn" data-cabinet="shinorama" title="Очистить список">🗑️</button>
+                            <span class="stat-total" id="statTotal_shinorama">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-divided" id="statDivided_shinorama">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-to-order" id="statToOrder_shinorama">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-to-download" id="statToDownload_shinorama">0</span>
                         </div>
                     </div>
                     <div class="cabinet-row">
                         <button class="cabinet-btn" data-cabinet="shinorama">Шинорама</button>
-                        <div class="cabinet-auto-control">
-                            <label class="switch-small">
-                                <input type="checkbox" id="autoModeToggle_shinorama" data-cabinet="shinorama">
-                                <span class="slider-small round"></span>
-                            </label>
-                            <span id="autoModeStatus_shinorama" class="auto-mode-indicator-small">выкл</span>
-                        </div>
                     </div>
                 </div>
-                <div class="cabinet-item">
+                <div class="cabinet-item" data-cabinet="trecktrack">
                     <div class="cabinet-labels-row">
                         <div class="cabinet-labels-stats">
-                            <span class="labels-count-to-order" id="toOrderCount_trecktrack">0</span>
-                            <span class="labels-sep">/</span>
-                            <span class="labels-count-to-download" id="toDownloadCount_trecktrack">0</span>
-                        </div>
-                        <div class="cabinet-labels-actions">
-                            <button class="label-action-btn retry-btn" data-cabinet="trecktrack" title="Заказать этикетки">🔄</button>
-                            <button class="label-action-btn download-btn" data-cabinet="trecktrack" title="Скачать этикетки">⬇️</button>
-                            <button class="label-action-btn clear-btn" data-cabinet="trecktrack" title="Очистить список">🗑️</button>
+                            <span class="stat-total" id="statTotal_trecktrack">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-divided" id="statDivided_trecktrack">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-to-order" id="statToOrder_trecktrack">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-to-download" id="statToDownload_trecktrack">0</span>
                         </div>
                     </div>
                     <div class="cabinet-row">
                         <button class="cabinet-btn" data-cabinet="trecktrack">TreckTrack</button>
-                        <div class="cabinet-auto-control">
-                            <label class="switch-small">
-                                <input type="checkbox" id="autoModeToggle_trecktrack" data-cabinet="trecktrack">
-                                <span class="slider-small round"></span>
-                            </label>
-                            <span id="autoModeStatus_trecktrack" class="auto-mode-indicator-small">выкл</span>
-                        </div>
                     </div>
                 </div>
-                <div class="cabinet-item">
+                <div class="cabinet-item" data-cabinet="sevenhundredshin">
                     <div class="cabinet-labels-row">
                         <div class="cabinet-labels-stats">
-                            <span class="labels-count-to-order" id="toOrderCount_sevenhundredshin">0</span>
-                            <span class="labels-sep">/</span>
-                            <span class="labels-count-to-download" id="toDownloadCount_sevenhundredshin">0</span>
-                        </div>
-                        <div class="cabinet-labels-actions">
-                            <button class="label-action-btn retry-btn" data-cabinet="sevenhundredshin" title="Заказать этикетки">🔄</button>
-                            <button class="label-action-btn download-btn" data-cabinet="sevenhundredshin" title="Скачать этикетки">⬇️</button>
-                            <button class="label-action-btn clear-btn" data-cabinet="sevenhundredshin" title="Очистить список">🗑️</button>
+                            <span class="stat-total" id="statTotal_sevenhundredshin">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-divided" id="statDivided_sevenhundredshin">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-to-order" id="statToOrder_sevenhundredshin">0</span>
+                            <span class="stat-sep">/</span>
+                            <span class="stat-to-download" id="statToDownload_sevenhundredshin">0</span>
                         </div>
                     </div>
                     <div class="cabinet-row">
                         <button class="cabinet-btn" data-cabinet="sevenhundredshin">700shin</button>
+                    </div>
+                </div>
+                
+                <!-- Глобальное управление -->
+                <div class="cabinet-item cabinet-controls">
+                    <div class="cabinet-labels-row controls-header">
+                        <div class="cabinet-labels-stats controls-label">⚙️ Управление</div>
+                    </div>
+                    <div class="cabinet-row controls-row">
                         <div class="cabinet-auto-control">
                             <label class="switch-small">
-                                <input type="checkbox" id="autoModeToggle_sevenhundredshin" data-cabinet="sevenhundredshin">
+                                <input type="checkbox" id="autoModeGlobal">
                                 <span class="slider-small round"></span>
                             </label>
-                            <span id="autoModeStatus_sevenhundredshin" class="auto-mode-indicator-small">выкл</span>
+                            <span id="autoModeStatusGlobal" class="auto-mode-indicator-small">выкл</span>
                         </div>
+                        <button id="triggerOrderLabelsBtn" class="control-btn order-btn">📦 Заказать</button>
+                        <button id="triggerDownloadLabelsBtn" class="control-btn download-btn">⬇️ Скачать</button>
                     </div>
                 </div>
             </div>
@@ -145,7 +140,7 @@
                             <tbody id="ordersList"></tbody>
                             <tfoot id="ordersFooter">
                                 <tr>
-                                    <td class="checkbox-cell"></td>
+                                    <td class="checkbox-cell"><input type="checkbox" id="selectAllLeftBottom"></td>
                                     <td colspan="6" style="text-align: left; padding: 8px;">
                                         <div class="stats-panel" style="margin: 0; gap: 24px; background: transparent; padding: 0;">
                                             <span>📊 Выделено (всего): <strong id="footerSelectedOrders">0</strong>(<strong id="footerTotalOrders">0</strong>) заказов</span>
@@ -153,7 +148,7 @@
                                             <span>💰 Сумма: <strong id="footerSelectedPrice">0</strong> ₽</span>
                                         </div>
                                     </td>
-                                    <td class="checkbox-cell"></td>
+                                    <td class="checkbox-cell"><input type="checkbox" id="selectAllRightBottom"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -210,7 +205,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.9.1 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.9.2 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -252,11 +247,11 @@
         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:9999;backdrop-filter:blur(3px);';
         
         let imageHtml = '';
-        if (customImage) {
-            imageHtml = `<img src="/static/images/${customImage}" style="width:80px;height:80px;object-fit:contain;animation:bounce 1s infinite ease-in-out;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'font-size:64px;animation:bounce 1s infinite ease-in-out;\'>🐴</div>';">`;
-        } else {
-            imageHtml = `<div style="font-size:64px;animation:bounce 1s infinite ease-in-out;">🐴</div>`;
-        }
+        const imgPath = '/static/images/not_donkey.png';
+        imageHtml = `
+            <img src="${imgPath}?v=${Date.now()}" style="width:80px;height:80px;object-fit:contain;animation:bounce 1s infinite ease-in-out;" onerror="this.style.display='none'; this.parentElement.querySelector('.emoji-fallback').style.display='block';">
+            <div class="emoji-fallback" style="font-size:64px;animation:bounce 1s infinite ease-in-out;display:none;">🐴</div>
+        `;
         
         overlay.innerHTML = `
             <div style="background:white;border-radius:20px;padding:30px 40px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.3);animation:fadeInUp 0.3s ease;max-width:400px;">
@@ -303,266 +298,213 @@
         return res.json();
     }
 
+    // ==================== СТАТИСТИКА ====================
+    async function loadCabinetStats(cabinet) {
+        try {
+            const data = await apiRequest(`/api/orders/stats?cabinet=${cabinet}`);
+            if (data.status === 'ok') {
+                document.getElementById(`statTotal_${cabinet}`).textContent = data.total || 0;
+                document.getElementById(`statDivided_${cabinet}`).textContent = data.divided || 0;
+                document.getElementById(`statToOrder_${cabinet}`).textContent = data.to_order || 0;
+                document.getElementById(`statToDownload_${cabinet}`).textContent = data.to_download || 0;
+            }
+        } catch (err) {
+            console.error('Ошибка загрузки статистики для', cabinet, ':', err);
+        }
+    }
+
+    async function loadAllStats() {
+        for (const cabinet of Object.keys(cabinetNames)) {
+            await loadCabinetStats(cabinet);
+        }
+    }
+
     // ==================== АВТО-РЕЖИМ ====================
     async function loadAutoModeStatus() {
         try {
-            const data = await apiRequest('/api/auto-mode/status');
-            const cabinetsStatus = data.cabinets || {};
-            for (const cabinet of Object.keys(cabinetNames)) {
-                const enabled = cabinetsStatus[cabinet] || false;
-                const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
-                if (toggle) toggle.checked = enabled;
-                updateAutoModeIndicator(cabinet, enabled);
-            }
+            const data = await apiRequest('/api/auto-mode/global-status');
+            const enabled = data.enabled || false;
+            const toggle = document.getElementById('autoModeGlobal');
+            if (toggle) toggle.checked = enabled;
+            document.getElementById('autoModeStatusGlobal').textContent = enabled ? 'вкл' : 'выкл';
+            document.getElementById('autoModeStatusGlobal').style.color = enabled ? '#28a745' : '#dc3545';
         } catch (err) {
             console.error('Ошибка загрузки статуса авто-режима:', err);
         }
     }
 
-    function updateAutoModeIndicator(cabinet, enabled) {
-        const indicator = document.getElementById(`autoModeStatus_${cabinet}`);
-        if (indicator) {
-            indicator.textContent = enabled ? 'вкл' : 'выкл';
-            indicator.style.color = enabled ? '#28a745' : '#dc3545';
-        }
-    }
-
-    async function toggleAutoMode(cabinet, enabled) {
+    // ==================== ЗАГРУЗКА ЗАКАЗОВ ====================
+    async function loadOrders() {
         try {
-            await apiRequest('/api/auto-mode/toggle', {
-                method: 'POST',
-                body: JSON.stringify({ cabinet, enabled })
-            });
-            updateAutoModeIndicator(cabinet, enabled);
-            showToast(`Авто-режим для кабинета ${cabinetNames[cabinet]} ${enabled ? 'включён' : 'выключен'}`);
-        } catch (err) {
-            showToast(`Ошибка: ${err.message}`, true);
-            const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
-            if (toggle) toggle.checked = !enabled;
-        }
-    }
-
-    // ==================== УПРАВЛЕНИЕ ЭТИКЕТКАМИ ====================
-    let labelStats = {
-        shinorama: { toOrder: 0, toDownload: 0 },
-        trecktrack: { toOrder: 0, toDownload: 0 },
-        sevenhundredshin: { toOrder: 0, toDownload: 0 }
-    };
-
-    async function loadFailedLabels(cabinet) {
-        try {
-            const data = await apiRequest(`/api/labels/failed?cabinet=${cabinet}`);
-            const items = data.items || [];
+            showToast('Загрузка...');
+            const data = await apiRequest('/api/orders');
             
-            const toOrder = items.filter(item => item.error && (item.error.includes('создать задачу') || item.error.includes('POSTING_NUMBERS'))).length;
-            const toDownload = items.filter(item => item.error && item.error.includes('получить этикетку')).length;
+            let ordersData = [];
+            let cabinetName = '';
             
-            labelStats[cabinet] = { toOrder, toDownload };
-            
-            const toOrderSpan = document.getElementById(`toOrderCount_${cabinet}`);
-            const toDownloadSpan = document.getElementById(`toDownloadCount_${cabinet}`);
-            
-            if (toOrderSpan) toOrderSpan.textContent = toOrder;
-            if (toDownloadSpan) toDownloadSpan.textContent = toDownload;
-            
-            return data;
-        } catch (err) {
-            console.error('Ошибка загрузки failed labels:', err);
-            return null;
-        }
-    }
-
-    async function loadAllFailedLabels() {
-        for (const cabinet of Object.keys(cabinetNames)) {
-            await loadFailedLabels(cabinet);
-        }
-    }
-
-    async function retryFailedLabels(cabinet) {
-        const stats = labelStats[cabinet];
-        const total = stats.toOrder + stats.toDownload;
-        
-        if (total === 0) {
-            showToast('Нет ошибочных этикеток для повторного заказа', true);
-            return;
-        }
-        
-        if (!confirm(`Повторить заказ этикеток для ${total} заказов? (заказать: ${stats.toOrder}, скачать: ${stats.toDownload})`)) {
-            return;
-        }
-        
-        showOverlay();
-        try {
-            const data = await apiRequest('/api/labels/retry-failed', {
-                method: 'POST',
-                body: JSON.stringify({ cabinet, items: [] })
-            });
-            
-            if (data.status === 'ok') {
-                showToast(`Запущен повторный заказ ${data.count} этикеток`);
-                if (data.job_id) {
-                    currentLabelJobId = data.job_id;
-                    startLabelStatusTracking();
-                }
-                setTimeout(() => loadFailedLabels(cabinet), 5000);
-                setTimeout(() => loadOrders(), 10000);
+            if (data.orders) {
+                ordersData = data.orders;
+                cabinetName = data.cabinet || '';
             } else {
-                showToast(data.message || 'Ошибка при повторном заказе', true);
-            }
-        } catch (err) {
-            showToast('Ошибка: ' + err.message, true);
-        } finally {
-            hideOverlay();
-        }
-    }
-
-    async function clearFailedLabels(cabinet) {
-        const stats = labelStats[cabinet];
-        const total = stats.toOrder + stats.toDownload;
-        
-        if (total === 0) {
-            showToast('Нет ошибочных этикеток для очистки', true);
-            return;
-        }
-        
-        if (!confirm(`Очистить список ошибок для ${total} заказов?`)) {
-            return;
-        }
-        
-        try {
-            await apiRequest('/api/labels/clear-failed', {
-                method: 'POST',
-                body: JSON.stringify({ cabinet })
-            });
-            
-            showToast('Список ошибок очищен');
-            await loadFailedLabels(cabinet);
-            await loadOrders();
-        } catch (err) {
-            showToast('Ошибка: ' + err.message, true);
-        }
-    }
-
-    async function downloadFailedLabels(cabinet) {
-        const stats = labelStats[cabinet];
-        
-        if (stats.toDownload === 0) {
-            showToast('Нет этикеток для скачивания', true);
-            return;
-        }
-        
-        showToast(`Запущено скачивание этикеток для ${stats.toDownload} заказов...`);
-        
-        try {
-            const data = await apiRequest(`/api/labels/download-failed?cabinet=${cabinet}`);
-            if (data.status === 'ok') {
-                showToast(`Готово к скачиванию ${data.count} этикеток`);
-                await loadFailedLabels(cabinet);
-                await loadOrders();
-            }
-        } catch (err) {
-            showToast('Ошибка: ' + err.message, true);
-        }
-    }
-
-    function bindLabelControlButtons() {
-        for (const cabinet of Object.keys(cabinetNames)) {
-            const retryBtn = document.querySelector(`.retry-btn[data-cabinet="${cabinet}"]`);
-            if (retryBtn && !retryBtn.dataset.bound) {
-                retryBtn.onclick = () => retryFailedLabels(cabinet);
-                retryBtn.dataset.bound = 'true';
+                console.error('Неизвестная структура ответа:', data);
+                showToast('Ошибка: неизвестный формат ответа', true);
+                return;
             }
             
-            const downloadBtn = document.querySelector(`.download-btn[data-cabinet="${cabinet}"]`);
-            if (downloadBtn && !downloadBtn.dataset.bound) {
-                downloadBtn.onclick = () => downloadFailedLabels(cabinet);
-                downloadBtn.dataset.bound = 'true';
+            orders = ordersData;
+            
+            const tbody = document.getElementById('ordersList');
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
+            } else {
+                tbody.innerHTML = orders.map((order, i) => {
+                    const hasIssues = order.products.some(p => 
+                        p.requirements?.is_mandatory_marked || 
+                        p.requirements?.is_gtd_required || 
+                        p.requirements?.is_country_required
+                    );
+                    
+                    const isDivided = order.is_divided || false;
+                    const labelsStatus = order.labels_status || 0;
+                    const isFolderReady = isDivided && labelsStatus >= 2;
+                    
+                    const totalPrice = order.products.reduce((sum, p) => sum + (typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0) * p.quantity, 0);
+                    
+                    let rowClass = 'order-row';
+                    if (isFolderReady) rowClass += ' folder-ready';
+                    if (hasIssues && !isDivided) rowClass += ' has-issues';
+                    const disabledAttr = (hasIssues || isDivided) ? 'disabled' : '';
+                    
+                    return `
+                        <tr class="${rowClass}" data-posting-number="${order.posting_number}">
+                            <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
+                            <td class="posting-number">${escapeHtml(order.posting_number)}</td>
+                            <td class="status-cell">
+                                <span class="status-badge status-awaiting_packaging">
+                                    ${isDivided ? '✅ Разделён' : 'Ожидает сборки'}
+                                </span>
+                            </td>
+                            <td class="products-cell">
+                                ${order.products.map(p => {
+                                    let warnings = [];
+                                    let priceVal = typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0;
+                                    
+                                    if (p.requirements?.is_mandatory_marked || p.requirements?.is_gtd_required) {
+                                        if (!p.marking?.is_completed) {
+                                            warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
+                                        } else {
+                                            warnings.push('<span class="mark-completed">✅ Информация добавлена</span>');
+                                        }
+                                    }
+                                    if (p.requirements?.is_country_required) {
+                                        if (!p.country?.is_completed) {
+                                            warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
+                                        } else {
+                                            warnings.push(`<span class="mark-completed">✅ Страна: ${p.country?.code || 'указана'}</span>`);
+                                        }
+                                    }
+                                    return `
+                                        <div class="product-item" data-pid="${p.product_id || 0}" data-offerid="${escapeHtml(p.offer_id || '')}" data-sku="${p.sku || 0}" data-name="${escapeHtml(p.name || '')}" data-qty="${p.quantity}" data-price="${priceVal}">
+                                            <div class="product-row">
+                                                <span class="product-name">${escapeHtml(p.name || 'Товар')}</span>
+                                            </div>
+                                            <div class="warnings">${warnings.join(' ')}</div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </td>
+                            <td class="offerid-cell">${order.products.map(p => `<div class="offerid-item">${escapeHtml(p.offer_id || '-')}</div>`).join('')}</td>
+                            <td class="quantity-cell">
+                                ${order.products.map(p => `<div class="quantity-item">${p.quantity}</div>`).join('')}
+                            </td>
+                            <td class="price-cell">${totalPrice.toLocaleString('ru-RU')} ₽</td>
+                            <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
+                        </tr>
+                    `;
+                }).join('');
             }
             
-            const clearBtn = document.querySelector(`.clear-btn[data-cabinet="${cabinet}"]`);
-            if (clearBtn && !clearBtn.dataset.bound) {
-                clearBtn.onclick = () => clearFailedLabels(cabinet);
-                clearBtn.dataset.bound = 'true';
+            document.getElementById('ordersContainer').style.display = 'block';
+            document.getElementById('activeCabinet').textContent = cabinetName || 'Активный кабинет';
+            
+            bindProductButtons();
+            
+            // Обработчики для чекбоксов
+            const ordersList = document.getElementById('ordersList');
+            
+            if (ordersList._changeHandler) {
+                ordersList.removeEventListener('change', ordersList._changeHandler);
             }
-        }
-    }
-
-    async function loadCountries() {
-        try {
-            const data = await apiRequest('/api/countries/list');
-            allCountries = data.countries || [];
-            allCountries.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-            filterCountries('');
-        } catch (err) {
-            console.error('Ошибка загрузки стран:', err);
-        }
-    }
-
-    function filterCountries(searchText) {
-        const select = document.getElementById('countrySelect');
-        const searchLower = searchText.toLowerCase().trim();
-        select.innerHTML = '';
-        const placeholder = document.createElement('option');
-        placeholder.disabled = true;
-        placeholder.selected = true;
-        placeholder.textContent = '🔍 ' + (searchText === '' ? 'Выберите страну' : 'Результаты');
-        placeholder.style.cssText = 'color:#999;font-style:italic';
-        select.appendChild(placeholder);
-        if (searchText === '') {
-            allCountries.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.code;
-                opt.textContent = `${c.name} (${c.code})`;
-                select.appendChild(opt);
-            });
-            return;
-        }
-        const filtered = allCountries.filter(c => c.name.toLowerCase().includes(searchLower) || c.code.toLowerCase().includes(searchLower));
-        if (filtered.length === 0) {
-            const opt = document.createElement('option');
-            opt.value = searchText.toUpperCase();
-            opt.textContent = `➕ Добавить: "${searchText.toUpperCase()}"`;
-            opt.style.cssText = 'color:#f57c00;font-weight:bold';
-            select.appendChild(opt);
-        } else {
-            filtered.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.code;
-                opt.textContent = `${c.name} (${c.code})`;
-                select.appendChild(opt);
-            });
-        }
-    }
-
-    async function updateAvailableCodes() {
-        try {
-            const data = await apiRequest('/api/codes/available');
-            document.getElementById('availableCodesCount').textContent = data.count;
-            return data.count;
-        } catch (e) {
-            return 0;
-        }
-    }
-
-    function updateIssuesStats() {
-        let countryRequired = 0;
-        let markingRequired = 0;
-        orders.forEach(order => {
-            order.products.forEach(product => {
-                if (product.requirements?.is_country_required) {
-                    if (!product.country?.is_completed) {
-                        countryRequired += product.quantity;
+            const changeHandler = (e) => {
+                if (e.target.classList.contains('order-checkbox')) {
+                    e.stopPropagation();
+                    const row = e.target.closest('.order-row');
+                    syncCheckbox(e.target, row);
+                }
+            };
+            ordersList.addEventListener('change', changeHandler);
+            ordersList._changeHandler = changeHandler;
+            
+            if (ordersList._clickHandler) {
+                ordersList.removeEventListener('click', ordersList._clickHandler);
+            }
+            const clickHandler = (e) => {
+                if (e.target.classList.contains('country-warning') || 
+                    e.target.classList.contains('mark-warning')) {
+                    return;
+                }
+                
+                const row = e.target.closest('.order-row');
+                if (row && e.target.type !== 'checkbox') {
+                    const leftCb = row.querySelector('td:first-child .order-checkbox');
+                    const rightCb = row.querySelector('td:last-child .order-checkbox');
+                    if (leftCb && !leftCb.disabled) {
+                        toggleRow(row, leftCb, rightCb);
                     }
                 }
-                if (product.requirements?.is_mandatory_marked || product.requirements?.is_gtd_required) {
-                    if (!product.marking?.is_completed) {
-                        markingRequired += product.quantity;
-                    }
+            };
+            ordersList.addEventListener('click', clickHandler);
+            ordersList._clickHandler = clickHandler;
+            
+            // Обработчики для selectAll
+            ['selectAllLeft', 'selectAllRight', 'selectAllLeftBottom', 'selectAllRightBottom'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    const newEl = el.cloneNode(true);
+                    el.parentNode.replaceChild(newEl, el);
+                    newEl.onchange = () => selectAll(newEl.checked);
                 }
             });
-        });
-        document.getElementById('countryRequiredCount').textContent = countryRequired;
-        document.getElementById('markingRequiredCount').textContent = markingRequired;
+            
+            updateSelectAll();
+            updateStats();
+            updateIssuesStats();
+            await updateAvailableCodes();
+            await loadAllStats();
+            
+            showToast(`Загружено ${orders.length} заказов`);
+        } catch (err) {
+            if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
+        }
+    }
+
+    // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+    function getStatusText(s) {
+        const map = {
+            'awaiting_packaging': 'Ожидает сборки',
+            'awaiting_deliver': 'Ожидает отгрузки',
+            'delivering': 'В доставке',
+            'delivered': 'Доставлен',
+            'cancelled': 'Отменен'
+        };
+        return map[s] || s;
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     function calcPrice(order) {
@@ -623,28 +565,29 @@
     }
 
     function updateSelectAll() {
-        const left = document.getElementById('selectAllLeft');
-        const right = document.getElementById('selectAllRight');
-        
-        if (!left || !right) return;
+        const leftAll = document.getElementById('selectAllLeft');
+        const rightAll = document.getElementById('selectAllRight');
+        const leftBottom = document.getElementById('selectAllLeftBottom');
+        const rightBottom = document.getElementById('selectAllRightBottom');
         
         const cbs = document.querySelectorAll('.order-checkbox:not([disabled])');
         
         if (cbs.length === 0) {
-            left.checked = false;
-            left.indeterminate = false;
-            right.checked = false;
-            right.indeterminate = false;
+            [leftAll, rightAll, leftBottom, rightBottom].forEach(el => {
+                if (el) { el.checked = false; el.indeterminate = false; }
+            });
             return;
         }
         
         const allChecked = Array.from(cbs).every(cb => cb.checked);
         const someChecked = Array.from(cbs).some(cb => cb.checked);
         
-        left.checked = allChecked;
-        left.indeterminate = !allChecked && someChecked;
-        right.checked = allChecked;
-        right.indeterminate = !allChecked && someChecked;
+        [leftAll, rightAll, leftBottom, rightBottom].forEach(el => {
+            if (el) {
+                el.checked = allChecked;
+                el.indeterminate = !allChecked && someChecked;
+            }
+        });
     }
 
     function selectAll(checked) {
@@ -660,7 +603,6 @@
                 }
             }
         });
-        
         updateSelectAll();
         updateStats();
     }
@@ -696,19 +638,134 @@
         updateStats();
     }
 
+    function updateIssuesStats() {
+        let countryRequired = 0;
+        let markingRequired = 0;
+        orders.forEach(order => {
+            order.products.forEach(product => {
+                if (product.requirements?.is_country_required) {
+                    if (!product.country?.is_completed) {
+                        countryRequired += product.quantity;
+                    }
+                }
+                if (product.requirements?.is_mandatory_marked || product.requirements?.is_gtd_required) {
+                    if (!product.marking?.is_completed) {
+                        markingRequired += product.quantity;
+                    }
+                }
+            });
+        });
+        document.getElementById('countryRequiredCount').textContent = countryRequired;
+        document.getElementById('markingRequiredCount').textContent = markingRequired;
+    }
+
+    async function updateAvailableCodes() {
+        try {
+            const data = await apiRequest('/api/codes/available');
+            document.getElementById('availableCodesCount').textContent = data.count;
+            return data.count;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    // ==================== ПОИСК ТОВАРА ====================
+    function findProductInOrder(order, pid, offerId, sku) {
+        if (pid && pid !== 0 && !isNaN(pid)) {
+            const found = order.products.find(p => p.product_id === pid);
+            if (found) return found;
+        }
+        if (offerId && offerId !== '') {
+            const found = order.products.find(p => p.offer_id === offerId);
+            if (found) return found;
+        }
+        if (sku && sku !== 0 && !isNaN(sku)) {
+            const found = order.products.find(p => p.sku === sku);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // ==================== КНОПКИ ТОВАРОВ ====================
+    function bindProductButtons() {
+        document.querySelectorAll('.country-warning').forEach(btn => {
+            if (btn.dataset.bound === 'true') return;
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                const productDiv = this.closest('.product-item');
+                if (!productDiv) {
+                    showToast('Ошибка: элемент товара не найден', true);
+                    return;
+                }
+                const row = productDiv.closest('.order-row');
+                if (!row) {
+                    showToast('Ошибка: строка заказа не найдена', true);
+                    return;
+                }
+                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+                if (!order) {
+                    showToast('Ошибка: заказ не найден', true);
+                    return;
+                }
+                const pid = parseInt(productDiv.dataset.pid);
+                const offerId = productDiv.dataset.offerid;
+                const sku = parseInt(productDiv.dataset.sku);
+                const product = findProductInOrder(order, pid, offerId, sku);
+                if (!product) {
+                    showToast('Ошибка: товар не найден', true);
+                    return;
+                }
+                await openCountryModal(order, product);
+            });
+            btn.dataset.bound = 'true';
+        });
+        
+        document.querySelectorAll('.mark-warning').forEach(btn => {
+            if (btn.dataset.bound === 'true') return;
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                const productDiv = this.closest('.product-item');
+                if (!productDiv) {
+                    showToast('Ошибка: элемент товара не найден', true);
+                    return;
+                }
+                const row = productDiv.closest('.order-row');
+                if (!row) {
+                    showToast('Ошибка: строка заказа не найдена', true);
+                    return;
+                }
+                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
+                if (!order) {
+                    showToast('Ошибка: заказ не найден', true);
+                    return;
+                }
+                const pid = parseInt(productDiv.dataset.pid);
+                const offerId = productDiv.dataset.offerid;
+                const sku = parseInt(productDiv.dataset.sku);
+                const product = findProductInOrder(order, pid, offerId, sku);
+                if (!product) {
+                    showToast('Ошибка: товар не найден', true);
+                    return;
+                }
+                await openMarkingModal(order, product);
+            });
+            btn.dataset.bound = 'true';
+        });
+    }
+
+    // ==================== МОДАЛЬНЫЕ ОКНА ====================
     async function openMarkingModal(order, product) {
-        console.log('🏷️ openMarkingModal вызван', order.posting_number, product.name);
         const available = await updateAvailableCodes();
         if (available < product.quantity) {
             showToast(`Нужно ${product.quantity} кодов, доступно ${available}`, true);
             return;
         }
-        
         let finalProductId = product.product_id;
         if (finalProductId === 0 && product.sku) {
             finalProductId = product.sku;
         }
-        
         currentMarkingData = {
             postingNumber: order.posting_number,
             productId: finalProductId,
@@ -731,7 +788,7 @@
                     posting_number: currentMarkingData.postingNumber,
                     product_id: currentMarkingData.productId,
                     quantity: currentMarkingData.quantity,
-                    codes: [] // коды будут из файла или ввода
+                    codes: []
                 })
             });
             const data = await res.json();
@@ -749,7 +806,6 @@
     }
 
     async function openCountryModal(order, product) {
-        console.log('🌍 openCountryModal вызван', order.posting_number, product.name);
         await loadCountries();
         const searchInput = document.getElementById('countrySearchInput');
         if (searchInput) searchInput.value = '';
@@ -780,12 +836,10 @@
             showToast('Выберите страну или введите код', true);
             return;
         }
-        
         let finalProductId = currentCountryData.productId;
         if (finalProductId === 0 && currentCountryData.sku) {
             finalProductId = currentCountryData.sku;
         }
-        
         try {
             const res = await fetch('/api/countries/set', {
                 method: 'POST',
@@ -816,6 +870,54 @@
         currentCountryData = null;
     }
 
+    async function loadCountries() {
+        try {
+            const data = await apiRequest('/api/countries/list');
+            allCountries = data.countries || [];
+            allCountries.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+            filterCountries('');
+        } catch (err) {
+            console.error('Ошибка загрузки стран:', err);
+        }
+    }
+
+    function filterCountries(searchText) {
+        const select = document.getElementById('countrySelect');
+        const searchLower = searchText.toLowerCase().trim();
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        placeholder.textContent = '🔍 ' + (searchText === '' ? 'Выберите страну' : 'Результаты');
+        placeholder.style.cssText = 'color:#999;font-style:italic';
+        select.appendChild(placeholder);
+        if (searchText === '') {
+            allCountries.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.code;
+                opt.textContent = `${c.name} (${c.code})`;
+                select.appendChild(opt);
+            });
+            return;
+        }
+        const filtered = allCountries.filter(c => c.name.toLowerCase().includes(searchLower) || c.code.toLowerCase().includes(searchLower));
+        if (filtered.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = searchText.toUpperCase();
+            opt.textContent = `➕ Добавить: "${searchText.toUpperCase()}"`;
+            opt.style.cssText = 'color:#f57c00;font-weight:bold';
+            select.appendChild(opt);
+        } else {
+            filtered.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.code;
+                opt.textContent = `${c.name} (${c.code})`;
+                select.appendChild(opt);
+            });
+        }
+    }
+
+    // ==================== АВТОРИЗАЦИЯ ====================
     async function checkPassword() {
         const pwd = document.getElementById('passwordInput').value;
         const errDiv = document.getElementById('authError');
@@ -841,7 +943,7 @@
             document.getElementById('mainContent').style.display = 'block';
             showToast('Добро пожаловать!');
             await loadAutoModeStatus();
-            await loadAllFailedLabels();
+            await loadAllStats();
             await loadOrders();
         } catch (err) {
             errDiv.textContent = err.message;
@@ -850,241 +952,7 @@
         }
     }
 
-    function findProductInOrder(order, pid, offerId, sku) {
-        if (pid && pid !== 0 && !isNaN(pid)) {
-            const found = order.products.find(p => p.product_id === pid);
-            if (found) return found;
-        }
-        
-        if (offerId && offerId !== '') {
-            const found = order.products.find(p => p.offer_id === offerId);
-            if (found) return found;
-        }
-        
-        if (sku && sku !== 0 && !isNaN(sku)) {
-            const found = order.products.find(p => p.sku === sku);
-            if (found) return found;
-        }
-        
-        return null;
-    }
-
-    function bindProductButtons() {
-        console.log('🔄 bindProductButtons: привязываю обработчики к кнопкам');
-        
-        document.querySelectorAll('.country-warning').forEach(btn => {
-            if (btn.dataset.bound === 'true') return;
-            
-            btn.addEventListener('click', async function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                
-                const productDiv = this.closest('.product-item');
-                if (!productDiv) {
-                    showToast('Ошибка: элемент товара не найден', true);
-                    return;
-                }
-                
-                const row = productDiv.closest('.order-row');
-                if (!row) {
-                    showToast('Ошибка: строка заказа не найдена', true);
-                    return;
-                }
-                
-                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
-                if (!order) {
-                    showToast('Ошибка: заказ не найден', true);
-                    return;
-                }
-                
-                const pid = parseInt(productDiv.dataset.pid);
-                const offerId = productDiv.dataset.offerid;
-                const sku = parseInt(productDiv.dataset.sku);
-                
-                const product = findProductInOrder(order, pid, offerId, sku);
-                
-                if (!product) {
-                    showToast('Ошибка: товар не найден', true);
-                    return;
-                }
-                
-                await openCountryModal(order, product);
-            });
-            
-            btn.dataset.bound = 'true';
-        });
-        
-        document.querySelectorAll('.mark-warning').forEach(btn => {
-            if (btn.dataset.bound === 'true') return;
-            
-            btn.addEventListener('click', async function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                
-                const productDiv = this.closest('.product-item');
-                if (!productDiv) {
-                    showToast('Ошибка: элемент товара не найден', true);
-                    return;
-                }
-                
-                const row = productDiv.closest('.order-row');
-                if (!row) {
-                    showToast('Ошибка: строка заказа не найдена', true);
-                    return;
-                }
-                
-                const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
-                if (!order) {
-                    showToast('Ошибка: заказ не найден', true);
-                    return;
-                }
-                
-                const pid = parseInt(productDiv.dataset.pid);
-                const offerId = productDiv.dataset.offerid;
-                const sku = parseInt(productDiv.dataset.sku);
-                
-                const product = findProductInOrder(order, pid, offerId, sku);
-                
-                if (!product) {
-                    showToast('Ошибка: товар не найден', true);
-                    return;
-                }
-                
-                await openMarkingModal(order, product);
-            });
-            
-            btn.dataset.bound = 'true';
-        });
-    }
-
-    async function loadOrders() {
-        try {
-            showToast('Загрузка...');
-            const data = await apiRequest('/api/orders');
-            
-            // Обрабатываем ответ от сервера (прежний формат)
-            let ordersData = [];
-            let cabinetName = '';
-            
-            if (data.orders) {
-                ordersData = data.orders;
-                cabinetName = data.cabinet || '';
-            } else {
-                console.error('Неизвестная структура ответа:', data);
-                showToast('Ошибка: неизвестный формат ответа', true);
-                return;
-            }
-            
-            orders = ordersData;
-            
-            const tbody = document.getElementById('ordersList');
-            if (orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
-            } else {
-                tbody.innerHTML = orders.map((order, i) => {
-                    // Проверяем наличие требований у товаров
-                    const hasIssues = order.products.some(p => 
-                        p.requirements?.is_mandatory_marked || 
-                        p.requirements?.is_gtd_required || 
-                        p.requirements?.is_country_required
-                    );
-                    
-                    // Проверяем, разделен ли заказ (из JSON состояния)
-                    const isDivided = order.is_divided || false;
-                    const labelsStatus = order.labels_status || 0;
-                    const isFolderReady = isDivided && labelsStatus >= 2;
-                    
-                    const totalQuantity = order.products.reduce((sum, p) => sum + p.quantity, 0);
-                    const price = order.products.reduce((sum, p) => sum + (typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0) * p.quantity, 0);
-                    
-                    let rowClass = 'order-row';
-                    if (isFolderReady) rowClass += ' folder-ready';
-                    if (hasIssues && !isDivided) rowClass += ' has-issues';
-                    const disabledAttr = (hasIssues || isDivided) ? 'disabled' : '';
-                    
-                    return `
-                        <tr class="${rowClass}" data-posting-number="${order.posting_number}">
-                            <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
-                            <td class="posting-number">${escapeHtml(order.posting_number)}</td>
-                            <td class="status-cell">
-                                <span class="status-badge status-awaiting_packaging">
-                                    ${isDivided ? '✅ Разделён' : 'Ожидает сборки'}
-                                </span>
-                            </td>
-                            <td class="products-cell">
-                                ${order.products.map(p => {
-                                    let warnings = [];
-                                    let priceVal = typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0;
-                                    
-                                    if (p.requirements?.is_mandatory_marked || p.requirements?.is_gtd_required) {
-                                        if (!p.marking?.is_completed) {
-                                            warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
-                                        } else {
-                                            warnings.push('<span class="mark-completed">✅ Информация добавлена</span>');
-                                        }
-                                    }
-                                    if (p.requirements?.is_country_required) {
-                                        if (!p.country?.is_completed) {
-                                            warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
-                                        } else {
-                                            warnings.push(`<span class="mark-completed">✅ Страна: ${p.country?.code || 'указана'}</span>`);
-                                        }
-                                    }
-                                    return `
-                                        <div class="product-item" data-pid="${p.product_id || 0}" data-offerid="${escapeHtml(p.offer_id || '')}" data-sku="${p.sku || 0}" data-name="${escapeHtml(p.name || '')}" data-qty="${p.quantity}" data-price="${priceVal}">
-                                            <div class="product-row">
-                                                <span class="product-name">${escapeHtml(p.name || 'Товар')}</span>
-                                                <span class="product-qty">×${p.quantity}</span>
-                                                <span class="product-price">${(priceVal * p.quantity).toLocaleString('ru-RU')} ₽</span>
-                                            </div>
-                                            <div class="warnings">${warnings.join(' ')}</div>
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </td>
-                            <td class="offerid-cell">${order.products.map(p => `<div class="offerid-item">${escapeHtml(p.offer_id || '-')}</div>`).join('')}</td>
-                            <td class="quantity-cell"><span class="quantity-value">${totalQuantity}</span></td>
-                            <td class="price-cell">${price.toLocaleString('ru-RU')} ₽</td>
-                            <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-            
-            document.getElementById('ordersContainer').style.display = 'block';
-            document.getElementById('activeCabinet').textContent = cabinetName || 'Активный кабинет';
-            
-            // Привязываем обработчики
-            bindProductButtons();
-            updateSelectAll();
-            updateStats();
-            updateIssuesStats();
-            await updateAvailableCodes();
-            
-            showToast(`Загружено ${orders.length} заказов`);
-        } catch (err) {
-            if (err.message !== 'unauthorized') showToast('Ошибка: ' + err.message, true);
-        }
-    }
-
-    function getStatusText(s) {
-        const map = {
-            'awaiting_packaging': 'Ожидает сборки',
-            'awaiting_deliver': 'Ожидает отгрузки',
-            'delivering': 'В доставке',
-            'delivered': 'Доставлен',
-            'cancelled': 'Отменен'
-        };
-        return map[s] || s;
-    }
-
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
+    // ==================== КНОПКИ ДЕЙСТВИЙ ====================
     async function splitOrders() {
         const cbs = document.querySelectorAll('.order-checkbox:checked:not([disabled])');
         if (cbs.length === 0) {
@@ -1104,7 +972,11 @@
                 if (valid.length) {
                     toShip.push({
                         posting_number: num,
-                        products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
+                        products: valid.map(p => ({
+                            product_id: p.product_id,
+                            offer_id: p.offer_id || '',
+                            quantity: p.quantity
+                        }))
                     });
                 }
             }
@@ -1128,6 +1000,7 @@
             setTimeout(async () => {
                 hideOverlay();
                 await loadOrders();
+                await loadAllStats();
             }, 2000);
         } catch (err) {
             hideOverlay();
@@ -1155,7 +1028,11 @@
                 if (valid.length) {
                     toShip.push({
                         posting_number: num,
-                        products: valid.map(p => ({ product_id: p.product_id, quantity: p.quantity }))
+                        products: valid.map(p => ({
+                            product_id: p.product_id,
+                            offer_id: p.offer_id || '',
+                            quantity: p.quantity
+                        }))
                     });
                 }
             }
@@ -1182,6 +1059,7 @@
             showToast(`✅${ok} ${err ? `❌${err}` : ''}`);
             setTimeout(async () => {
                 await loadOrders();
+                await loadAllStats();
             }, 3000);
         } catch (err) {
             hideOverlay();
@@ -1189,83 +1067,7 @@
         }
     }
 
-    function startLabelStatusTracking() {
-        const statusDiv = document.getElementById('labelStatus');
-        const statusText = document.getElementById('labelStatusText');
-        const progressSpan = document.getElementById('labelProgress');
-        const closeBtn = document.getElementById('labelStatusClose');
-        
-        statusDiv.style.display = 'flex';
-        
-        if (labelStatusInterval) {
-            clearInterval(labelStatusInterval);
-        }
-        
-        labelStatusInterval = setInterval(async () => {
-            if (!currentLabelJobId) return;
-            
-            try {
-                const data = await apiRequest(`/api/labels/status?job_id=${currentLabelJobId}`);
-                
-                if (data.status === 'processing') {
-                    statusText.textContent = `🏷️ Генерация этикеток...`;
-                    progressSpan.textContent = `${data.progress}/${data.total}`;
-                    if (closeBtn) closeBtn.style.display = 'none';
-                } else if (data.status === 'completed') {
-                    statusText.textContent = `✅ Этикетки сохранены!`;
-                    progressSpan.textContent = `${data.progress}/${data.total}`;
-                    if (closeBtn) closeBtn.style.display = 'none';
-                    clearInterval(labelStatusInterval);
-                    labelStatusInterval = null;
-                    setTimeout(() => {
-                        statusDiv.style.display = 'none';
-                        currentLabelJobId = null;
-                        loadAllFailedLabels();
-                        loadOrders();
-                    }, 3000);
-                } else if (data.status === 'error') {
-                    statusText.textContent = `❌ Ошибка: ${data.error || 'неизвестная ошибка'}`;
-                    progressSpan.textContent = `${data.progress}/${data.total}`;
-                    if (closeBtn) closeBtn.style.display = 'inline-block';
-                    clearInterval(labelStatusInterval);
-                    labelStatusInterval = null;
-                    setTimeout(() => {
-                        statusDiv.style.display = 'none';
-                        currentLabelJobId = null;
-                        loadAllFailedLabels();
-                        loadOrders();
-                    }, 5000);
-                } else if (data.status === 'partial') {
-                    statusText.textContent = `⚠️ Частичная ошибка: ${data.error || 'некоторые этикетки не сохранены'}`;
-                    progressSpan.textContent = `${data.progress}/${data.total}`;
-                    if (closeBtn) closeBtn.style.display = 'inline-block';
-                    clearInterval(labelStatusInterval);
-                    labelStatusInterval = null;
-                    setTimeout(() => {
-                        statusDiv.style.display = 'none';
-                        currentLabelJobId = null;
-                        loadAllFailedLabels();
-                        loadOrders();
-                    }, 5000);
-                }
-            } catch (err) {
-                console.error('Status check error:', err);
-            }
-        }, 2000);
-        
-        if (closeBtn) {
-            closeBtn.onclick = function() {
-                statusDiv.style.display = 'none';
-                if (labelStatusInterval) {
-                    clearInterval(labelStatusInterval);
-                    labelStatusInterval = null;
-                }
-                currentLabelJobId = null;
-                loadOrders();
-            };
-        }
-    }
-
+    // ==================== ПЕРЕКЛЮЧЕНИЕ КАБИНЕТА ====================
     async function switchCabinet(cabinet) {
         try {
             const colors = { shinorama: '#e8f5e9', trecktrack: '#fff9c4', sevenhundredshin: '#ffebee' };
@@ -1276,8 +1078,7 @@
             
             await apiRequest('/api/cabinet/switch', { method: 'POST', body: JSON.stringify({ cabinet }) });
             
-            const activeSpan = document.getElementById('activeCabinet');
-            if (activeSpan) activeSpan.textContent = names[cabinet];
+            document.getElementById('activeCabinet').textContent = names[cabinet];
             
             document.querySelectorAll('.cabinet-btn').forEach(btn => {
                 btn.classList.remove('active');
@@ -1290,12 +1091,13 @@
             orders = [];
             updateStats();
             await loadOrders();
-            await loadFailedLabels(cabinet);
+            await loadAllStats();
         } catch (err) {
             if (err.message !== 'unauthorized') showToast('Ошибка переключения: ' + err.message, true);
         }
     }
 
+    // ==================== ИНИЦИАЛИЗАЦИЯ ====================
     document.addEventListener('DOMContentLoaded', async () => {
         await loadSettings();
         
@@ -1305,7 +1107,7 @@
             document.getElementById('mainContent').style.display = 'block';
             updateAvailableCodes();
             await loadAutoModeStatus();
-            await loadAllFailedLabels();
+            await loadAllStats();
             loadOrders();
         }
         
@@ -1322,12 +1124,50 @@
         document.getElementById('countryConfirmBtn').onclick = setCountry;
         document.getElementById('countryCancelBtn').onclick = closeAllModals;
         
-        for (const cabinet of Object.keys(cabinetNames)) {
-            const toggle = document.getElementById(`autoModeToggle_${cabinet}`);
-            if (toggle) {
-                toggle.onchange = (e) => toggleAutoMode(cabinet, e.target.checked);
+        // Глобальный авто-режим
+        document.getElementById('autoModeGlobal').addEventListener('change', async function(e) {
+            const enabled = e.target.checked;
+            try {
+                await apiRequest('/api/auto-mode/global', {
+                    method: 'POST',
+                    body: JSON.stringify({ enabled })
+                });
+                document.getElementById('autoModeStatusGlobal').textContent = enabled ? 'вкл' : 'выкл';
+                document.getElementById('autoModeStatusGlobal').style.color = enabled ? '#28a745' : '#dc3545';
+                showToast(`Авто-режим ${enabled ? 'включён' : 'выключен'}`);
+            } catch (err) {
+                showToast('Ошибка: ' + err.message, true);
+                e.target.checked = !enabled;
             }
-        }
+        });
+        
+        // Кнопка "Заказать этикетки" (ручной режим)
+        document.getElementById('triggerOrderLabelsBtn').addEventListener('click', async function() {
+            try {
+                await apiRequest('/api/labels/trigger-order', { method: 'POST' });
+                showToast('✅ Запущен заказ этикеток');
+                setTimeout(async () => {
+                    await loadOrders();
+                    await loadAllStats();
+                }, 5000);
+            } catch (err) {
+                showToast('Ошибка: ' + err.message, true);
+            }
+        });
+        
+        // Кнопка "Скачать этикетки" (ручной режим)
+        document.getElementById('triggerDownloadLabelsBtn').addEventListener('click', async function() {
+            try {
+                await apiRequest('/api/labels/trigger-download', { method: 'POST' });
+                showToast('✅ Запущено скачивание этикеток');
+                setTimeout(async () => {
+                    await loadOrders();
+                    await loadAllStats();
+                }, 5000);
+            } catch (err) {
+                showToast('Ошибка: ' + err.message, true);
+            }
+        });
         
         const searchInput = document.getElementById('countrySearchInput');
         if (searchInput) searchInput.addEventListener('input', (e) => filterCountries(e.target.value));
@@ -1339,8 +1179,6 @@
         document.querySelectorAll('.cabinet-btn').forEach(btn => {
             btn.onclick = () => { if (isAuth) switchCabinet(btn.dataset.cabinet); };
         });
-        
-        bindLabelControlButtons();
     });
     </script>
 </body>

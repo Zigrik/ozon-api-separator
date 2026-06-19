@@ -22,6 +22,7 @@ profile.cov
 
 # Labels and logs
 labels/
+orders/
 logs/
 *.pdf
 

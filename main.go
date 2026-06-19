@@ -39,8 +39,9 @@ func runApp() {
 	os.MkdirAll("templates", 0755)
 	os.MkdirAll("static", 0755)
 	os.MkdirAll("orders", 0755)
+	os.MkdirAll("data", 0755)
 
-	services.StartLabelWorker()
+	services.StartLabelWorkers()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "templates/index.html")
@@ -61,12 +62,24 @@ func runApp() {
 	http.HandleFunc("/api/orders/ship", middleware.AuthMiddleware(handlers.HandleShipOrders))
 	http.HandleFunc("/api/orders/ship-and-labels", middleware.AuthMiddleware(handlers.HandleShipAndOrderLabels))
 	http.HandleFunc("/api/orders/state", middleware.AuthMiddleware(handlers.HandleGetOrderState))
+	http.HandleFunc("/api/orders/stats", middleware.AuthMiddleware(handlers.HandleGetStats))
 
 	// API для страны, ГТД и маркировки
 	http.HandleFunc("/api/countries/list", middleware.AuthMiddleware(handlers.HandleGetCountries))
 	http.HandleFunc("/api/countries/set", middleware.AuthMiddleware(handlers.HandleSetCountry))
 	http.HandleFunc("/api/gtd/absent", middleware.AuthMiddleware(handlers.HandleSetGTDAbsent))
 	http.HandleFunc("/api/markings/add", middleware.AuthMiddleware(handlers.HandleAddMarkings))
+
+	// API для этикеток
+	http.HandleFunc("/api/labels/create", middleware.AuthMiddleware(handlers.HandleCreateLabels))
+	http.HandleFunc("/api/labels/status", middleware.AuthMiddleware(handlers.HandleGetLabelStatus))
+	http.HandleFunc("/api/labels/download", middleware.AuthMiddleware(handlers.HandleDownloadLabel))
+	http.HandleFunc("/api/labels/trigger-order", middleware.AuthMiddleware(handlers.HandleTriggerOrderLabels))
+	http.HandleFunc("/api/labels/trigger-download", middleware.AuthMiddleware(handlers.HandleTriggerDownloadLabels))
+
+	// API для авто-режима
+	http.HandleFunc("/api/auto-mode/global", middleware.AuthMiddleware(handlers.HandleGlobalAutoMode))
+	http.HandleFunc("/api/auto-mode/global-status", middleware.AuthMiddleware(handlers.HandleGlobalAutoModeStatus))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -78,18 +91,6 @@ func runApp() {
 
 	localIP := getLocalIP()
 	log.Printf("🚀 Сервер запущен на http://%s:%s (http://localhost:%s)", localIP, port, port)
-	log.Printf("📋 Доступные эндпоинты:")
-	log.Printf("   GET  / - веб-интерфейс")
-	log.Printf("   POST /api/check-password - проверка пароля")
-	log.Printf("   POST /api/cabinet/switch - переключение кабинета")
-	log.Printf("   GET  /api/orders - получение заказов")
-	log.Printf("   POST /api/orders/ship - разделение заказов")
-	log.Printf("   POST /api/orders/ship-and-labels - разделение + заказ этикеток")
-	log.Printf("   GET  /api/orders/state - получить состояние заказа")
-	log.Printf("   GET  /api/countries/list - список стран")
-	log.Printf("   POST /api/countries/set - установка страны")
-	log.Printf("   POST /api/gtd/absent - отметить ГТД как отсутствующее")
-	log.Printf("   POST /api/markings/add - добавить маркировку")
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 

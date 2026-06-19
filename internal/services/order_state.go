@@ -6,21 +6,22 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ozon-api-separator/internal/config"
 	"ozon-api-separator/internal/models"
 )
 
-// Глобальный мьютекс для защиты доступа к JSON файлу
 var stateMutex sync.Mutex
 
-// GetOrdersFilePath - возвращает путь к файлу состояния заказов
-func GetOrdersFilePath() string {
+// GetOrdersFilePath - возвращает путь к файлу состояния для конкретного кабинета
+func GetOrdersFilePath(cabinetKey string) string {
 	os.MkdirAll("orders", 0755)
 	dateStr := time.Now().Format("2006_01_02")
-	return filepath.Join("orders", fmt.Sprintf("orders_%s.json", dateStr))
+	return filepath.Join("orders", fmt.Sprintf("orders_%s_%s.json", cabinetKey, dateStr))
 }
 
 // LoadCabinetState - загружает состояние кабинета из файла
@@ -28,7 +29,7 @@ func LoadCabinetState(cabinetKey string) (*models.CabinetState, error) {
 	stateMutex.Lock()
 	defer stateMutex.Unlock()
 
-	filePath := GetOrdersFilePath()
+	filePath := GetOrdersFilePath(cabinetKey)
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return &models.CabinetState{
@@ -57,7 +58,7 @@ func SaveCabinetState(state *models.CabinetState) error {
 	stateMutex.Lock()
 	defer stateMutex.Unlock()
 
-	filePath := GetOrdersFilePath()
+	filePath := GetOrdersFilePath(state.CabinetKey)
 	state.LastUpdated = time.Now()
 
 	data, err := json.MarshalIndent(state, "", "  ")
@@ -70,6 +71,29 @@ func SaveCabinetState(state *models.CabinetState) error {
 	}
 
 	return nil
+}
+
+// CheckFolderExists - проверяет существование папки для заказа
+func CheckFolderExists(cabinetKey, postingNumber string) bool {
+	cabinet := config.AppConfig.Cabinets[cabinetKey]
+	if cabinet == nil {
+		return false
+	}
+
+	dataPath := cabinet.DataPath
+	if dataPath == "" {
+		dataPath = filepath.Join("data", cabinetKey)
+	}
+
+	parts := strings.Split(postingNumber, "-")
+	folderName := strings.Join(parts[:len(parts)-1], "-")
+	if folderName == "" {
+		folderName = postingNumber
+	}
+
+	folderPath := filepath.Join(dataPath, folderName)
+	_, err := os.Stat(folderPath)
+	return err == nil
 }
 
 // UpdateOrders - обновляет список заказов
@@ -100,15 +124,18 @@ func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error
 		if existing, exists := existingOrdersMap[order.PostingNumber]; exists {
 			orderState = *existing
 			orderState.Products = convertProducts(order.Products)
+			orderState.IsReadyForSplit = CheckFolderExists(cabinetKey, order.PostingNumber) || orderState.IsReadyForSplit
 		} else {
 			orderState = models.OrderState{
-				PostingNumber: order.PostingNumber,
-				IsDivided:     false,
-				Products:      convertProducts(order.Products),
-				Shipments:     make([]models.ShipmentState, 0),
-				Errors:        make([]models.OrderError, 0),
+				PostingNumber:   order.PostingNumber,
+				IsReadyForSplit: CheckFolderExists(cabinetKey, order.PostingNumber),
+				IsDivided:       false,
+				Products:        convertProducts(order.Products),
+				Shipments:       make([]models.ShipmentState, 0),
+				Errors:          make([]models.OrderError, 0),
 			}
-			log.Printf("➕ Новый заказ: %s", order.PostingNumber)
+			// ЭТОТ ЛОГ ОСТАВЛЯЕМ - он нужен
+			log.Printf("➕ Новый заказ: %s (кабинет: %s)", order.PostingNumber, cabinetKey)
 		}
 
 		orderState.LabelsStatus = orderState.CalculateLabelsStatus()
@@ -135,6 +162,7 @@ func UpdateOrderAfterShip(cabinetKey, postingNumber string, shipments []string, 
 	found := false
 	for i := range state.Orders {
 		if state.Orders[i].PostingNumber == postingNumber {
+			state.Orders[i].IsReadyForSplit = true
 			state.Orders[i].IsDivided = true
 
 			for _, shipment := range shipments {
@@ -152,7 +180,7 @@ func UpdateOrderAfterShip(cabinetKey, postingNumber string, shipments []string, 
 				})
 			}
 
-			state.Orders[i].LabelsStatus = needLabels
+			state.Orders[i].LabelsStatus = 1
 			found = true
 			log.Printf("✂️ Заказ %s разделен на %d отправлений", postingNumber, len(shipments))
 			break
@@ -255,7 +283,7 @@ func UpdateCountryStatus(cabinetKey, postingNumber string, productID int64, coun
 					code := countryCode
 					state.Orders[i].Products[j].Country.Code = &code
 					state.Orders[i].Products[j].Country.Error = nil
-					log.Printf("🌍 Страна %s установлена для товара %d в заказе %s", countryCode, productID, postingNumber)
+					log.Printf("🌍 Страна %s установлена для товара %d", countryCode, productID)
 					break
 				}
 			}
@@ -278,7 +306,7 @@ func UpdateGTDStatus(cabinetKey, postingNumber string, productID int64) error {
 			for j := range state.Orders[i].Products {
 				if state.Orders[i].Products[j].ProductID == productID {
 					state.Orders[i].Products[j].Marking.GtdAbsent = true
-					log.Printf("📄 ГТД отмечено как отсутствующее для товара %d в заказе %s", productID, postingNumber)
+					log.Printf("📄 ГТД отмечено как отсутствующее для товара %d", productID)
 					break
 				}
 			}
@@ -303,7 +331,7 @@ func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, code
 					state.Orders[i].Products[j].Marking.IsCompleted = true
 					state.Orders[i].Products[j].Marking.Codes = codes
 					state.Orders[i].Products[j].Marking.Error = nil
-					log.Printf("🏷️ Маркировка добавлена для товара %d в заказе %s (%d кодов)", productID, postingNumber, len(codes))
+					log.Printf("🏷️ Маркировка добавлена для товара %d (%d кодов)", productID, len(codes))
 					break
 				}
 			}
@@ -316,7 +344,12 @@ func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, code
 
 // processPendingLabels - обрабатывает заказы с labels_status = 1
 func processPendingLabels() error {
-	state, err := LoadCabinetState("")
+	cabinet := config.GetActiveConfig()
+	if cabinet == nil {
+		return fmt.Errorf("активный кабинет не найден")
+	}
+
+	state, err := LoadCabinetState(cabinet.Key)
 	if err != nil {
 		return err
 	}
@@ -337,8 +370,6 @@ func processPendingLabels() error {
 		hasErrors := false
 		maxRetries := 5
 
-		log.Printf("📦 Обработка заказа %s (подзаказов: %d)", order.PostingNumber, len(order.Shipments))
-
 		for j := range order.Shipments {
 			shipment := &order.Shipments[j]
 
@@ -351,13 +382,7 @@ func processPendingLabels() error {
 				allOrdered = false
 				errMsg := fmt.Sprintf("превышено число попыток (%d)", maxRetries)
 				shipment.Label.Error = &errMsg
-				log.Printf("⚠️ Подзаказ %s: превышено число попыток (%d)", shipment.PostingNumber, maxRetries)
 				continue
-			}
-
-			cabinet := config.GetActiveConfig()
-			if cabinet == nil {
-				return fmt.Errorf("активный кабинет не найден")
 			}
 
 			taskID, err := CreateLabelTask(cabinet, []string{shipment.PostingNumber})
@@ -379,7 +404,7 @@ func processPendingLabels() error {
 
 		if allOrdered {
 			order.LabelsStatus = 2
-			log.Printf("✅ Заказ %s: все этикетки заказаны (labels_status=2)", order.PostingNumber)
+			WakeDownloadWorker()
 		} else if hasErrors {
 			allFailed := true
 			for _, s := range order.Shipments {
@@ -391,14 +416,119 @@ func processPendingLabels() error {
 			if allFailed {
 				order.LabelsStatus = 4
 				log.Printf("❌ Заказ %s: все подзаказы завершились ошибкой (labels_status=4)", order.PostingNumber)
-			} else {
-				log.Printf("⏳ Заказ %s: частичная ошибка, повторим позже (labels_status=1)", order.PostingNumber)
 			}
 		}
 	}
 
-	if !found {
+	if !found && atomic.LoadInt32(&KeyNeedLabels) == 0 {
 		log.Println("ℹ️ Нет заказов с labels_status=1")
+	}
+
+	return SaveCabinetState(state)
+}
+
+// processPendingDownloads - обрабатывает заказы с labels_status = 2
+func processPendingDownloads() error {
+	cabinet := config.GetActiveConfig()
+	if cabinet == nil {
+		return fmt.Errorf("активный кабинет не найден")
+	}
+
+	state, err := LoadCabinetState(cabinet.Key)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for i := range state.Orders {
+		if state.Orders[i].LabelsStatus != 2 {
+			continue
+		}
+
+		if !state.Orders[i].IsDivided || len(state.Orders[i].Shipments) == 0 {
+			continue
+		}
+
+		found = true
+		order := &state.Orders[i]
+		allDownloaded := true
+		hasErrors := false
+		maxRetries := 5
+
+		for j := range order.Shipments {
+			shipment := &order.Shipments[j]
+
+			if shipment.Label.IsDownloaded {
+				continue
+			}
+
+			if !shipment.Label.IsOrdered {
+				allDownloaded = false
+				continue
+			}
+
+			if shipment.Label.RetryCount >= maxRetries {
+				hasErrors = true
+				allDownloaded = false
+				errMsg := fmt.Sprintf("превышено число попыток скачивания (%d)", maxRetries)
+				shipment.Label.Error = &errMsg
+				continue
+			}
+
+			if shipment.Label.TaskID == 0 {
+				allDownloaded = false
+				errMsg := "нет task_id для скачивания"
+				shipment.Label.Error = &errMsg
+				continue
+			}
+
+			pdfData, err := GetLabelByTaskIDWithRetry(cabinet, shipment.Label.TaskID, 3, 2*time.Second)
+			if err != nil {
+				shipment.Label.RetryCount++
+				errMsg := err.Error()
+				shipment.Label.Error = &errMsg
+				hasErrors = true
+				allDownloaded = false
+				log.Printf("❌ Ошибка скачивания этикетки для %s (попытка %d): %v", shipment.PostingNumber, shipment.Label.RetryCount, err)
+			} else {
+				filePath, err := SaveLabelToFile(cabinet, shipment.PostingNumber, pdfData)
+				if err != nil {
+					shipment.Label.RetryCount++
+					errMsg := err.Error()
+					shipment.Label.Error = &errMsg
+					hasErrors = true
+					allDownloaded = false
+					log.Printf("❌ Ошибка сохранения этикетки для %s (попытка %d): %v", shipment.PostingNumber, shipment.Label.RetryCount, err)
+				} else {
+					shipment.Label.FilePath = filePath
+					shipment.Label.IsDownloaded = true
+					shipment.Label.RetryCount = 0
+					shipment.Label.Error = nil
+					log.Printf("✅ Этикетка для %s скачана: %s", shipment.PostingNumber, filePath)
+				}
+			}
+		}
+
+		if allDownloaded {
+			order.LabelsStatus = 3
+			log.Printf("✅ Заказ %s: все этикетки скачаны", order.PostingNumber)
+		} else if hasErrors {
+			allFailed := true
+			for _, s := range order.Shipments {
+				if !s.Label.IsDownloaded && s.Label.RetryCount < maxRetries {
+					allFailed = false
+					break
+				}
+			}
+			if allFailed {
+				order.LabelsStatus = 4
+				log.Printf("❌ Заказ %s: все подзаказы завершились ошибкой скачивания (labels_status=4)", order.PostingNumber)
+			}
+		}
+	}
+
+	if !found && atomic.LoadInt32(&KeyDownloadLabels) == 0 {
+		log.Println("ℹ️ Нет заказов с labels_status=2")
 	}
 
 	return SaveCabinetState(state)
@@ -410,6 +540,7 @@ func convertProducts(products []models.Product) []models.ProductState {
 	for _, p := range products {
 		result = append(result, models.ProductState{
 			ProductID: p.ProductID,
+			SKU:       p.SKU,
 			OfferID:   p.OfferID,
 			Quantity:  p.Quantity,
 			Requirements: models.ProductRequirement{

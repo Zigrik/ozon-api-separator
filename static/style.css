@@ -75,46 +75,85 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     text-align: center;
 }
 
-/* Стили для блоков кабинетов */
+/* ============ БЛОК КАБИНЕТОВ ============ */
 .cabinet-buttons-wrapper {
     display: flex;
     gap: 15px;
     flex-wrap: wrap;
     margin-bottom: 15px;
-    margin-top: 0;
 }
 
 .cabinet-item {
     background: #f0f0f0;
     border-radius: 12px;
     padding: 10px 15px;
-    min-width: 200px;
+    min-width: 150px;
     transition: all 0.2s ease;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
+    flex: 1;
 }
 
 .cabinet-item[data-cabinet="shinorama"] { background: #e8f5e9; }
 .cabinet-item[data-cabinet="trecktrack"] { background: #fff9c4; }
 .cabinet-item[data-cabinet="sevenhundredshin"] { background: #ffebee; }
+.cabinet-item.cabinet-controls { 
+    background: #f8f9fa; 
+    min-width: 200px; 
+    flex: 0.7;
+    border: 1px solid #e0e0e0;
+}
 
-/* Строка с этикетками (сверху) */
 .cabinet-labels-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(0,0,0,0.1);
 }
 
-/* Строка с кабинетом и авто-режимом (снизу) */
+.cabinet-labels-row.controls-header {
+    border-bottom: none;
+    padding-bottom: 4px;
+}
+
+.cabinet-labels-stats {
+    font-family: monospace;
+    font-size: 15px;
+    font-weight: 700;
+    background: rgba(255,255,255,0.7);
+    padding: 4px 12px;
+    border-radius: 6px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.cabinet-labels-stats.controls-label {
+    background: transparent;
+    min-width: auto;
+    font-size: 12px;
+    color: #666;
+    font-family: inherit;
+    font-weight: 600;
+}
+
+.stat-total { color: #999; }
+.stat-divided { color: #28a745; }
+.stat-to-order { color: #ffc107; }
+.stat-to-download { color: #dc3545; }
+.stat-sep { color: #ccc; font-weight: 300; }
+
 .cabinet-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    justify-content: center;
+}
+
+.cabinet-row.controls-row {
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .cabinet-btn {
@@ -125,6 +164,7 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     font-size: 13px;
     font-weight: 600;
     transition: all 0.3s ease;
+    width: 100%;
 }
 
 .cabinet-btn[data-cabinet="shinorama"] {
@@ -147,83 +187,48 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     box-shadow: inset 0 -2px 0 rgba(255,255,255,0.5);
 }
 
-.cabinet-auto-control {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.cabinet-labels-stats {
-    font-family: monospace;
-    font-size: 14px;
-    font-weight: 700;
-    background: rgba(255,255,255,0.7);
-    padding: 4px 8px;
-    border-radius: 6px;
-    min-width: 55px;
-    text-align: center;
-}
-
-.labels-count-to-order {
-    color: #e6a017;
-    font-weight: 700;
-}
-
-.labels-sep {
-    color: #999;
-    margin: 0 2px;
-    font-weight: 400;
-}
-
-.labels-count-to-download {
-    color: #4caf50;
-    font-weight: 700;
-}
-
-.cabinet-labels-actions {
-    display: flex;
-    gap: 5px;
-}
-
-/* Кнопки действий с этикетками */
-.label-action-btn {
-    width: 28px;
-    height: 28px;
+/* ============ КНОПКИ УПРАВЛЕНИЯ ============ */
+.control-btn {
+    padding: 6px 18px;
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
+    font-weight: 600;
     transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    font-family: inherit;
+    letter-spacing: 0.3px;
 }
-
-.label-action-btn:hover {
-    transform: scale(1.05);
-    opacity: 0.85;
+.control-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
-
-.label-action-btn:active {
-    transform: scale(0.95);
+.control-btn:active {
+    transform: translateY(0);
+    box-shadow: none;
 }
-
-.retry-btn {
-    background-color: #e6c384;
-    color: #5c4a1e;
+.order-btn {
+    background: #ffc107;
+    color: #333;
 }
-
+.order-btn:hover {
+    background: #e6a800;
+}
 .download-btn {
-    background-color: #7cb57c;
-    color: #1e3a1e;
+    background: #28a745;
+    color: white;
+}
+.download-btn:hover {
+    background: #1e7e34;
 }
 
-.clear-btn {
-    background-color: #d9a0a0;
-    color: #4a1e1e;
+/* ============ ПЕРЕКЛЮЧАТЕЛЬ ============ */
+.cabinet-auto-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
-/* Переключатель авто-режима */
 .switch-small {
     position: relative;
     display: inline-block;
@@ -258,7 +263,7 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     border-radius: 50%;
 }
 input:checked + .slider-small {
-    background-color: #7cb57c;
+    background-color: #28a745;
 }
 input:checked + .slider-small:before {
     transform: translateX(16px);
@@ -444,8 +449,12 @@ input:checked + .slider-small:before {
     padding: 4px 0;
 }
 
-.quantity-cell { text-align: center; width: 80px; }
-.quantity-value {
+.quantity-cell { 
+    text-align: center; 
+    width: 80px;
+    vertical-align: middle;
+}
+.quantity-item {
     font-size: 16px;
     font-weight: 700;
     color: #4caf50;
@@ -453,7 +462,8 @@ input:checked + .slider-small:before {
     padding: 4px 10px;
     border-radius: 20px;
     display: inline-block;
-    min-width: 50px;
+    min-width: 40px;
+    margin: 2px 0;
 }
 .quantity-header { text-align: center; width: 80px; }
 
@@ -650,13 +660,9 @@ input:checked + .slider-small:before {
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Адаптив */
+/* ============ АДАПТИВ ============ */
 @media (max-width: 768px) {
     .container { padding: 8px 10px 10px 10px; }
-    .stats-row { flex-direction: column; }
-    .stats-panel { justify-content: space-between; flex-wrap: wrap; font-size: 11px; }
-    .stats-panel strong { font-size: 13px; }
-    .action-buttons, .action-buttons-bottom { flex-direction: column; align-items: center; }
     .cabinet-buttons-wrapper {
         flex-direction: column;
         gap: 10px;
@@ -664,14 +670,21 @@ input:checked + .slider-small:before {
     .cabinet-item {
         min-width: auto;
     }
+    .cabinet-item.cabinet-controls {
+        flex: 1;
+    }
     .cabinet-labels-stats {
-        font-size: 12px;
-        min-width: 50px;
+        font-size: 13px;
+        padding: 4px 8px;
     }
-    .label-action-btn {
-        width: 32px;
-        height: 32px;
+    .control-btn {
+        padding: 5px 14px;
+        font-size: 11px;
     }
+    .stats-row { flex-direction: column; }
+    .stats-panel { justify-content: space-between; flex-wrap: wrap; font-size: 11px; }
+    .stats-panel strong { font-size: 13px; }
+    .action-buttons, .action-buttons-bottom { flex-direction: column; align-items: center; }
     .orders-table { font-size: 13px; }
     .orders-table th, .orders-table td { padding: 2px 4px; }
     .checkbox-cell { width: 28px; padding: 2px 2px !important; }
@@ -679,7 +692,8 @@ input:checked + .slider-small:before {
     .posting-number { font-size: 12px; }
     .product-name { font-size: 12px; }
     .offerid-cell { font-size: 12px; }
-    .quantity-value { font-size: 13px; padding: 2px 6px; min-width: 40px; }
+    .quantity-item { font-size: 13px; padding: 2px 8px; min-width: 30px; }
+    .quantity-cell { width: 50px; }
     .price-cell { font-size: 14px; width: 80px; }
     .status-badge { font-size: 11px; padding: 3px 8px; }
     .modal-content { width: 95%; margin: 10px; }
@@ -694,7 +708,7 @@ input:checked + .slider-small:before {
     .posting-number { font-size: 16px; }
     .product-name { font-size: 15px; }
     .offerid-cell { font-size: 16px; }
-    .quantity-value { font-size: 17px; padding: 4px 12px; }
+    .quantity-item { font-size: 17px; padding: 4px 12px; }
     .price-cell { font-size: 18px; }
     .status-badge { font-size: 14px; padding: 5px 12px; }
 }

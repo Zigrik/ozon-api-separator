@@ -13,9 +13,6 @@ import (
 )
 
 // HandleCreateLabels - обработчик заказа этикеток
-// Метод: POST
-// Тело запроса: {"posting_numbers": ["50573134-0085-1-1", "50573134-0085-1-2"]}
-// Ответ: {"status": "ok", "task_id": 123456789, "message": "Задача создана"}
 func HandleCreateLabels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -66,9 +63,6 @@ func HandleCreateLabels(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleGetLabelStatus - обработчик получения статуса этикетки
-// Метод: GET
-// Параметры: ?task_id=123456789
-// Ответ: {"status": "ok", "label_status": "completed", "is_ready": true}
 func HandleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -114,9 +108,6 @@ func HandleGetLabelStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleDownloadLabel - обработчик скачивания этикетки
-// Метод: GET
-// Параметры: ?task_id=123456789&posting_number=50573134-0085-1-1
-// Ответ: PDF файл
 func HandleDownloadLabel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -150,7 +141,6 @@ func HandleDownloadLabel(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("📥 Скачивание этикетки для заказа %s, task_id=%d", postingNumber, taskID)
 
-	// Пытаемся получить этикетку с повторными попытками
 	pdfData, err := services.GetLabelByTaskIDWithRetry(cabinet, taskID, 5, 2*time.Second)
 	if err != nil {
 		log.Printf("❌ Ошибка скачивания этикетки: %v", err)
@@ -161,7 +151,6 @@ func HandleDownloadLabel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Сохраняем этикетку в файл
 	filePath, err := services.SaveLabelToFile(cabinet, postingNumber, pdfData)
 	if err != nil {
 		log.Printf("❌ Ошибка сохранения этикетки: %v", err)
@@ -172,15 +161,45 @@ func HandleDownloadLabel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Обновляем состояние в JSON файле
 	if err := services.UpdateOrderLabel(cabinet.Key, postingNumber, taskID, true, filePath); err != nil {
 		log.Printf("⚠️ Ошибка обновления состояния этикетки: %v", err)
 	}
 
 	log.Printf("✅ Этикетка сохранена: %s", filePath)
 
-	// Отдаем PDF клиенту
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.pdf", postingNumber))
 	w.Write(pdfData)
+}
+
+// HandleTriggerOrderLabels - ручной запуск заказа этикеток
+func HandleTriggerOrderLabels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	services.WakeLabelWorker()
+	log.Println("🔔 Ручной запуск заказа этикеток")
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "Запущен заказ этикеток",
+	})
+}
+
+// HandleTriggerDownloadLabels - ручной запуск скачивания этикеток
+func HandleTriggerDownloadLabels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	services.WakeDownloadWorker()
+	log.Println("🔔 Ручной запуск скачивания этикеток")
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "Запущено скачивание этикеток",
+	})
 }

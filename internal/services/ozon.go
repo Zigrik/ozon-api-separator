@@ -253,7 +253,14 @@ func SaveLabelToFile(cab *models.CabinetConfig, postingNumber string, pdfData []
 		dataPath = filepath.Join("data", cab.Key)
 	}
 
-	folderPath := filepath.Join(dataPath, postingNumber)
+	// Получаем префикс (обрезаем последний дефис с цифрой)
+	parts := strings.Split(postingNumber, "-")
+	folderName := strings.Join(parts[:len(parts)-1], "-")
+	if folderName == "" {
+		folderName = postingNumber
+	}
+
+	folderPath := filepath.Join(dataPath, folderName)
 	if err := os.MkdirAll(folderPath, 0755); err != nil {
 		return "", fmt.Errorf("ошибка создания папки: %w", err)
 	}
