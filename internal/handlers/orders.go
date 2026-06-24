@@ -36,11 +36,31 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("✅ Загружено %d заказов из Ozon API", len(orders))
 
-	go func() {
-		if err := services.UpdateOrders(cabinet.Key, cabinet.Name, orders); err != nil {
-			log.Printf("⚠️ Ошибка сохранения состояния: %v", err)
+	// Сохраняем состояние в файл (синхронно, чтобы получить is_ready_for_split)
+	if err := services.UpdateOrders(cabinet.Key, cabinet.Name, orders); err != nil {
+		log.Printf("⚠️ Ошибка сохранения состояния: %v", err)
+	}
+
+	// Загружаем состояние чтобы получить is_ready_for_split
+	state, err := services.LoadCabinetState(cabinet.Key)
+	if err != nil {
+		log.Printf("⚠️ Ошибка загрузки состояния: %v", err)
+	}
+
+	// Создаем карту is_ready_for_split по номеру заказа
+	readyMap := make(map[string]bool)
+	if state != nil {
+		for _, orderState := range state.Orders {
+			readyMap[orderState.PostingNumber] = orderState.IsReadyForSplit
 		}
-	}()
+	}
+
+	// Обогащаем заказы данными из состояния
+	for i := range orders {
+		if isReady, exists := readyMap[orders[i].PostingNumber]; exists {
+			orders[i].IsReadyForSplit = isReady
+		}
+	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
@@ -250,7 +270,7 @@ func HandleGetOrderState(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleGetStats - обработчик получения статистики по кабинету (в штуках товаров)
+// HandleGetStats - обработчик получения статистики по кабинету
 func HandleGetStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -275,13 +295,12 @@ func HandleGetStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	total := 0      // всего товаров в заказах
-	divided := 0    // товаров в разделенных заказах
-	toOrder := 0    // товаров, требующих заказа этикеток
-	toDownload := 0 // товаров, требующих скачивания этикеток
+	total := 0
+	divided := 0
+	toOrder := 0
+	toDownload := 0
 
 	for _, order := range state.Orders {
-		// Считаем общее количество товаров в заказе
 		orderTotal := 0
 		for _, product := range order.Products {
 			orderTotal += product.Quantity
@@ -292,15 +311,12 @@ func HandleGetStats(w http.ResponseWriter, r *http.Request) {
 			divided += orderTotal
 		}
 
-		// Если заказ разделен, считаем товары по статусам этикеток
 		if order.IsDivided {
 			switch order.LabelsStatus {
 			case 1:
 				toOrder += orderTotal
 			case 2:
 				toDownload += orderTotal
-			case 3:
-				// уже скачаны - не считаем
 			}
 		}
 	}

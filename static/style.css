@@ -396,12 +396,29 @@ input:checked + .slider-small:before {
 .order-row:hover { background-color: #f8f9fa !important; }
 .order-row.selected { background-color: #e3f2fd !important; }
 .order-row.selected:hover { background-color: #bbdef5 !important; }
+
 .order-row.folder-ready { 
     background-color: #fff9c4 !important; 
     opacity: 1;
 }
 .order-row.folder-ready:hover { 
     background-color: #fff59d !important; 
+}
+
+/* Заказ готов к автоматическому разделению (есть папка) */
+.order-row.ready-for-split {
+    background-color: #fff8e1 !important;
+    opacity: 0.85;
+}
+.order-row.ready-for-split:hover {
+    background-color: #ffecb3 !important;
+}
+.order-row.ready-for-split .posting-number {
+    color: #f57c00;
+}
+.order-row.ready-for-split .status-badge {
+    background-color: #fff3e0;
+    color: #f57c00;
 }
 
 .posting-number {
@@ -436,6 +453,29 @@ input:checked + .slider-small:before {
 }
 .product-item:last-child { border-bottom: none; }
 .product-name { font-size: 14px; color: #333; font-weight: 500; line-height: 1.3; }
+
+.product-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.product-qty {
+    font-size: 13px;
+    color: #666;
+    font-weight: 600;
+    background: #f0f0f0;
+    padding: 0 8px;
+    border-radius: 4px;
+}
+
+.product-price {
+    font-size: 14px;
+    color: #2e7d32;
+    font-weight: 600;
+    min-width: 80px;
+    text-align: right;
+}
 
 .offerid-cell { 
     white-space: nowrap;
@@ -691,6 +731,9 @@ input:checked + .slider-small:before {
     .checkbox-cell input[type="checkbox"] { width: 14px; height: 14px; }
     .posting-number { font-size: 12px; }
     .product-name { font-size: 12px; }
+    .product-row { flex-wrap: wrap; }
+    .product-qty { font-size: 11px; }
+    .product-price { font-size: 12px; min-width: 60px; }
     .offerid-cell { font-size: 12px; }
     .quantity-item { font-size: 13px; padding: 2px 8px; min-width: 30px; }
     .quantity-cell { width: 50px; }

@@ -28,13 +28,14 @@ type AppConfig struct {
 // ============ МОДЕЛИ OZON API ============
 
 type Posting struct {
-	PostingNumber string        `json:"posting_number"`
-	Status        string        `json:"status"`
-	OrderID       int64         `json:"order_id"`
-	CreatedAt     time.Time     `json:"created_at"`
-	Products      []Product     `json:"products"`
-	Requirements  *Requirements `json:"requirements,omitempty"`
-	IsFolderReady bool          `json:"is_folder_ready"`
+	PostingNumber   string        `json:"posting_number"`
+	Status          string        `json:"status"`
+	OrderID         int64         `json:"order_id"`
+	CreatedAt       time.Time     `json:"created_at"`
+	Products        []Product     `json:"products"`
+	Requirements    *Requirements `json:"requirements,omitempty"`
+	IsFolderReady   bool          `json:"is_folder_ready"`
+	IsReadyForSplit bool          `json:"is_ready_for_split,omitempty"`
 }
 
 type Product struct {

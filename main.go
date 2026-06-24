@@ -36,6 +36,11 @@ func runApp() {
 		log.Fatalf("❌ Ошибка конфигурации: %v", err)
 	}
 
+	// Загружаем коды маркировки из файла
+	if err := config.LoadMarkingCodes(); err != nil {
+		log.Printf("⚠️ Ошибка загрузки кодов маркировки: %v", err)
+	}
+
 	os.MkdirAll("templates", 0755)
 	os.MkdirAll("static", 0755)
 	os.MkdirAll("orders", 0755)
@@ -68,6 +73,11 @@ func runApp() {
 	http.HandleFunc("/api/countries/list", middleware.AuthMiddleware(handlers.HandleGetCountries))
 	http.HandleFunc("/api/countries/set", middleware.AuthMiddleware(handlers.HandleSetCountry))
 	http.HandleFunc("/api/gtd/absent", middleware.AuthMiddleware(handlers.HandleSetGTDAbsent))
+
+	// API для кодов маркировки
+	http.HandleFunc("/api/codes/available", middleware.AuthMiddleware(handlers.HandleGetAvailableCodes))
+	http.HandleFunc("/api/codes/get", middleware.AuthMiddleware(handlers.HandleGetCodes))
+	http.HandleFunc("/api/codes/reload", middleware.AuthMiddleware(handlers.HandleReloadCodes))
 	http.HandleFunc("/api/markings/add", middleware.AuthMiddleware(handlers.HandleAddMarkings))
 
 	// API для этикеток
@@ -81,6 +91,9 @@ func runApp() {
 	http.HandleFunc("/api/auto-mode/global", middleware.AuthMiddleware(handlers.HandleGlobalAutoMode))
 	http.HandleFunc("/api/auto-mode/global-status", middleware.AuthMiddleware(handlers.HandleGlobalAutoModeStatus))
 
+	// Настройки
+	http.HandleFunc("/api/settings", handlers.HandleGetSettings)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -91,6 +104,26 @@ func runApp() {
 
 	localIP := getLocalIP()
 	log.Printf("🚀 Сервер запущен на http://%s:%s (http://localhost:%s)", localIP, port, port)
+	log.Printf("📋 Доступные эндпоинты:")
+	log.Printf("   GET  / - веб-интерфейс")
+	log.Printf("   POST /api/check-password - проверка пароля")
+	log.Printf("   POST /api/cabinet/switch - переключение кабинета")
+	log.Printf("   GET  /api/orders - получение заказов")
+	log.Printf("   GET  /api/orders/stats - статистика по кабинету")
+	log.Printf("   POST /api/orders/ship - разделение заказов")
+	log.Printf("   POST /api/orders/ship-and-labels - разделение + заказ этикеток")
+	log.Printf("   GET  /api/orders/state - получить состояние заказа")
+	log.Printf("   GET  /api/codes/available - доступно кодов маркировки")
+	log.Printf("   POST /api/codes/get - получить коды маркировки")
+	log.Printf("   POST /api/codes/reload - перезагрузить коды маркировки")
+	log.Printf("   POST /api/markings/add - добавить маркировку")
+	log.Printf("   POST /api/countries/set - установить страну")
+	log.Printf("   GET  /api/countries/list - список стран")
+	log.Printf("   POST /api/gtd/absent - отметить ГТД")
+	log.Printf("   POST /api/labels/trigger-order - ручной заказ этикеток")
+	log.Printf("   POST /api/labels/trigger-download - ручное скачивание этикеток")
+	log.Printf("   POST /api/auto-mode/global - глобальный авто-режим")
+	log.Printf("   GET  /api/auto-mode/global-status - статус авто-режима")
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 

@@ -130,6 +130,7 @@ func LoadMarkingCodes() error {
 	log.Println("loadMarkingCodes: начало загрузки")
 	CodesMutex.Lock()
 	defer CodesMutex.Unlock()
+
 	file, err := os.Open("GTINs.txt")
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -139,6 +140,7 @@ func LoadMarkingCodes() error {
 		return err
 	}
 	defer file.Close()
+
 	MarkingCodes = make([]string, 0)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -147,6 +149,7 @@ func LoadMarkingCodes() error {
 			MarkingCodes = append(MarkingCodes, code)
 		}
 	}
+
 	log.Printf("loadMarkingCodes: загружено %d кодов маркировки", len(MarkingCodes))
 	return scanner.Err()
 }

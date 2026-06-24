@@ -19,7 +19,6 @@
         </div>
 
         <div id="mainContent" style="display:none;">
-            <!-- Блок кабинетов со статистикой -->
             <div class="cabinet-buttons-wrapper">
                 <div class="cabinet-item" data-cabinet="shinorama">
                     <div class="cabinet-labels-row">
@@ -70,7 +69,6 @@
                     </div>
                 </div>
                 
-                <!-- Глобальное управление -->
                 <div class="cabinet-item cabinet-controls">
                     <div class="cabinet-labels-row controls-header">
                         <div class="cabinet-labels-stats controls-label">⚙️ Управление</div>
@@ -111,6 +109,7 @@
                     <div class="stats-panel issues-panel" id="issuesPanel">
                         <span>⚠️ Требуют страну: <strong id="countryRequiredCount">0</strong></span>
                         <span>🏷️ Маркировка + ГТД: <strong id="markingRequiredCount">0</strong> (🔖 доступно: <strong id="availableCodesCount">0</strong>)</span>
+                        <button id="reloadCodesBtn" class="reload-btn" title="Перезагрузить коды из GTINs.txt" style="background:transparent;border:none;cursor:pointer;font-size:14px;padding:0 4px;">🔄</button>
                     </div>
                 </div>
 
@@ -163,7 +162,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно для маркировки и ГТД -->
     <div id="markingModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -181,7 +179,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно для страны производителя -->
     <div id="countryModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -205,7 +202,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.9.2 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.9.4 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -283,6 +280,13 @@
         const headers = { 'Content-Type': 'application/json', ...opts.headers };
         if (authToken) headers['X-Auth-Token'] = authToken;
         const res = await fetch(url, { ...opts, headers });
+        
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+            console.error('❌ API вернул HTML вместо JSON:', url);
+            throw new Error('Ошибка авторизации или неправильный маршрут');
+        }
+        
         if (res.status === 401) {
             authToken = null;
             localStorage.removeItem('authToken');
@@ -359,12 +363,13 @@
             } else {
                 tbody.innerHTML = orders.map((order, i) => {
                     const hasIssues = order.products.some(p => 
-                        p.requirements?.is_mandatory_marked || 
-                        p.requirements?.is_gtd_required || 
-                        p.requirements?.is_country_required
+                        p.is_mandatory_marked || 
+                        p.is_gtd_required || 
+                        p.is_country_required
                     );
                     
                     const isDivided = order.is_divided || false;
+                    const isReadyForSplit = order.is_ready_for_split || false;
                     const labelsStatus = order.labels_status || 0;
                     const isFolderReady = isDivided && labelsStatus >= 2;
                     
@@ -372,8 +377,14 @@
                     
                     let rowClass = 'order-row';
                     if (isFolderReady) rowClass += ' folder-ready';
+                    if (isReadyForSplit && !isDivided) rowClass += ' ready-for-split';
                     if (hasIssues && !isDivided) rowClass += ' has-issues';
-                    const disabledAttr = (hasIssues || isDivided) ? 'disabled' : '';
+                    
+                    const disabledAttr = (hasIssues || isDivided || isReadyForSplit) ? 'disabled' : '';
+                    
+                    let statusText = 'Ожидает сборки';
+                    if (isDivided) statusText = '✅ Разделён';
+                    else if (isReadyForSplit) statusText = '📁 Готов к разделению';
                     
                     return `
                         <tr class="${rowClass}" data-posting-number="${order.posting_number}">
@@ -381,7 +392,7 @@
                             <td class="posting-number">${escapeHtml(order.posting_number)}</td>
                             <td class="status-cell">
                                 <span class="status-badge status-awaiting_packaging">
-                                    ${isDivided ? '✅ Разделён' : 'Ожидает сборки'}
+                                    ${statusText}
                                 </span>
                             </td>
                             <td class="products-cell">
@@ -389,14 +400,14 @@
                                     let warnings = [];
                                     let priceVal = typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0;
                                     
-                                    if (p.requirements?.is_mandatory_marked || p.requirements?.is_gtd_required) {
+                                    if (p.is_mandatory_marked || p.is_gtd_required) {
                                         if (!p.marking?.is_completed) {
                                             warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
                                         } else {
                                             warnings.push('<span class="mark-completed">✅ Информация добавлена</span>');
                                         }
                                     }
-                                    if (p.requirements?.is_country_required) {
+                                    if (p.is_country_required) {
                                         if (!p.country?.is_completed) {
                                             warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
                                         } else {
@@ -404,7 +415,14 @@
                                         }
                                     }
                                     return `
-                                        <div class="product-item" data-pid="${p.product_id || 0}" data-offerid="${escapeHtml(p.offer_id || '')}" data-sku="${p.sku || 0}" data-name="${escapeHtml(p.name || '')}" data-qty="${p.quantity}" data-price="${priceVal}">
+                                        <div class="product-item" 
+                                             data-pid="${p.product_id || 0}" 
+                                             data-offerid="${escapeHtml(p.offer_id || '')}" 
+                                             data-sku="${p.sku || 0}" 
+                                             data-name="${escapeHtml(p.name || '')}" 
+                                             data-qty="${p.quantity}" 
+                                             data-price="${priceVal}"
+                                             data-product='${JSON.stringify(p).replace(/'/g, "&#39;")}'>
                                             <div class="product-row">
                                                 <span class="product-name">${escapeHtml(p.name || 'Товар')}</span>
                                             </div>
@@ -429,7 +447,6 @@
             
             bindProductButtons();
             
-            // Обработчики для чекбоксов
             const ordersList = document.getElementById('ordersList');
             
             if (ordersList._changeHandler) {
@@ -466,7 +483,6 @@
             ordersList.addEventListener('click', clickHandler);
             ordersList._clickHandler = clickHandler;
             
-            // Обработчики для selectAll
             ['selectAllLeft', 'selectAllRight', 'selectAllLeftBottom', 'selectAllRightBottom'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
@@ -530,9 +546,9 @@
             const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
             if (order) {
                 order.products.forEach(p => {
-                    const isReady = !p.requirements?.is_mandatory_marked && 
-                                   !p.requirements?.is_gtd_required && 
-                                   !p.requirements?.is_country_required;
+                    const isReady = !p.is_mandatory_marked && 
+                                   !p.is_gtd_required && 
+                                   !p.is_country_required;
                     if (isReady) {
                         selectedProductsCount += p.quantity;
                         selectedTotalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
@@ -643,12 +659,12 @@
         let markingRequired = 0;
         orders.forEach(order => {
             order.products.forEach(product => {
-                if (product.requirements?.is_country_required) {
+                if (product.is_country_required) {
                     if (!product.country?.is_completed) {
                         countryRequired += product.quantity;
                     }
                 }
-                if (product.requirements?.is_mandatory_marked || product.requirements?.is_gtd_required) {
+                if (product.is_mandatory_marked || product.is_gtd_required) {
                     if (!product.marking?.is_completed) {
                         markingRequired += product.quantity;
                     }
@@ -661,30 +677,49 @@
 
     async function updateAvailableCodes() {
         try {
+            console.log('🔄 updateAvailableCodes вызван');
             const data = await apiRequest('/api/codes/available');
-            document.getElementById('availableCodesCount').textContent = data.count;
-            return data.count;
+            console.log('📊 Ответ от /api/codes/available:', data);
+            const count = data.count || 0;
+            const el = document.getElementById('availableCodesCount');
+            if (el) {
+                el.textContent = count;
+                console.log('✅ Обновлено DOM: availableCodesCount =', count);
+            } else {
+                console.error('❌ Элемент availableCodesCount не найден в DOM');
+            }
+            return count;
         } catch (e) {
+            console.error('❌ Ошибка updateAvailableCodes:', e);
             return 0;
         }
     }
 
-    // ==================== ПОИСК ТОВАРА ====================
-    function findProductInOrder(order, pid, offerId, sku) {
-        if (pid && pid !== 0 && !isNaN(pid)) {
-            const found = order.products.find(p => p.product_id === pid);
-            if (found) return found;
+    // ==================== ПЕРЕЗАГРУЗКА КОДОВ ====================
+    document.getElementById('reloadCodesBtn').addEventListener('click', async function() {
+        try {
+            showToast('🔄 Перезагрузка кодов...');
+            const res = await fetch('/api/codes/reload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken }
+            });
+            const data = await res.json();
+            console.log('Перезагрузка кодов:', data);
+            if (data.status === 'ok') {
+                showToast(`✅ ${data.message}`);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const count = await updateAvailableCodes();
+                console.log('Обновленный счетчик:', count);
+                const domCount = document.getElementById('availableCodesCount').textContent;
+                console.log('DOM счетчик:', domCount);
+            } else {
+                showToast(`❌ ${data.message}`, true);
+            }
+        } catch (err) {
+            showToast('Ошибка: ' + err.message, true);
+            console.error('Ошибка перезагрузки:', err);
         }
-        if (offerId && offerId !== '') {
-            const found = order.products.find(p => p.offer_id === offerId);
-            if (found) return found;
-        }
-        if (sku && sku !== 0 && !isNaN(sku)) {
-            const found = order.products.find(p => p.sku === sku);
-            if (found) return found;
-        }
-        return null;
-    }
+    });
 
     // ==================== КНОПКИ ТОВАРОВ ====================
     function bindProductButtons() {
@@ -708,10 +743,17 @@
                     showToast('Ошибка: заказ не найден', true);
                     return;
                 }
-                const pid = parseInt(productDiv.dataset.pid);
-                const offerId = productDiv.dataset.offerid;
-                const sku = parseInt(productDiv.dataset.sku);
-                const product = findProductInOrder(order, pid, offerId, sku);
+                
+                let product = null;
+                try {
+                    product = JSON.parse(productDiv.dataset.product);
+                } catch (e) {
+                    const offerId = productDiv.dataset.offerid;
+                    if (offerId) {
+                        product = order.products.find(p => p.offer_id === offerId);
+                    }
+                }
+                
                 if (!product) {
                     showToast('Ошибка: товар не найден', true);
                     return;
@@ -741,10 +783,17 @@
                     showToast('Ошибка: заказ не найден', true);
                     return;
                 }
-                const pid = parseInt(productDiv.dataset.pid);
-                const offerId = productDiv.dataset.offerid;
-                const sku = parseInt(productDiv.dataset.sku);
-                const product = findProductInOrder(order, pid, offerId, sku);
+                
+                let product = null;
+                try {
+                    product = JSON.parse(productDiv.dataset.product);
+                } catch (e) {
+                    const offerId = productDiv.dataset.offerid;
+                    if (offerId) {
+                        product = order.products.find(p => p.offer_id === offerId);
+                    }
+                }
+                
                 if (!product) {
                     showToast('Ошибка: товар не найден', true);
                     return;
@@ -757,38 +806,80 @@
 
     // ==================== МОДАЛЬНЫЕ ОКНА ====================
     async function openMarkingModal(order, product) {
+        console.log('🏷️ openMarkingModal:', { order: order.posting_number, product });
+        
         const available = await updateAvailableCodes();
         if (available < product.quantity) {
             showToast(`Нужно ${product.quantity} кодов, доступно ${available}`, true);
             return;
         }
+        
         let finalProductId = product.product_id;
-        if (finalProductId === 0 && product.sku) {
-            finalProductId = product.sku;
+        
+        if (finalProductId === 0 && product.offer_id) {
+            const orderData = orders.find(o => o.posting_number === order.posting_number);
+            if (orderData && orderData.products) {
+                for (const p of orderData.products) {
+                    if (p.offer_id === product.offer_id && p.product_id !== 0) {
+                        finalProductId = p.product_id;
+                        break;
+                    }
+                }
+            }
         }
+        
+        if (finalProductId === 0) {
+            showToast('❌ Ошибка: не удалось определить ID товара', true);
+            return;
+        }
+        
         currentMarkingData = {
             postingNumber: order.posting_number,
             productId: finalProductId,
+            offerId: product.offer_id || '',
             quantity: product.quantity,
             productName: product.name
         };
+        
+        console.log('✅ currentMarkingData:', currentMarkingData);
+        
         const modal = document.getElementById('markingModal');
-        document.getElementById('markingProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Кол-во:</strong> ${product.quantity}<br><strong>SKU:</strong> ${product.sku || '—'}`;
+        document.getElementById('markingProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Кол-во:</strong> ${product.quantity}<br><strong>Offer ID:</strong> ${product.offer_id || '—'}`;
         document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>⚠️ ГТД будет отмечено как отсутствующее автоматически.`;
         modal.style.display = 'flex';
     }
 
     async function addMarkings() {
         if (!currentMarkingData) return;
+        
+        console.log('🏷️ addMarkings currentMarkingData:', currentMarkingData);
+        
+        if (!currentMarkingData.productId || currentMarkingData.productId === 0) {
+            showToast('❌ Ошибка: не удалось определить ID товара', true);
+            return;
+        }
+        
         try {
+            const codesRes = await fetch('/api/codes/get', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
+                body: JSON.stringify({ count: currentMarkingData.quantity })
+            });
+            const codesData = await codesRes.json();
+            if (codesData.status !== 'ok') {
+                showToast(`❌ ${codesData.message}`, true);
+                return;
+            }
+            
             const res = await fetch('/api/markings/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
                 body: JSON.stringify({
                     posting_number: currentMarkingData.postingNumber,
                     product_id: currentMarkingData.productId,
+                    offer_id: currentMarkingData.offerId || '',
                     quantity: currentMarkingData.quantity,
-                    codes: []
+                    codes: codesData.codes
                 })
             });
             const data = await res.json();
@@ -806,18 +897,38 @@
     }
 
     async function openCountryModal(order, product) {
+        console.log('🌍 openCountryModal:', { order: order.posting_number, product });
         await loadCountries();
         const searchInput = document.getElementById('countrySearchInput');
         if (searchInput) searchInput.value = '';
         filterCountries('');
+        
+        let finalProductId = product.product_id;
+        if (finalProductId === 0 && product.offer_id) {
+            const orderData = orders.find(o => o.posting_number === order.posting_number);
+            if (orderData && orderData.products) {
+                for (const p of orderData.products) {
+                    if (p.offer_id === product.offer_id && p.product_id !== 0) {
+                        finalProductId = p.product_id;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (finalProductId === 0) {
+            showToast('❌ Ошибка: не удалось определить ID товара', true);
+            return;
+        }
+        
         currentCountryData = {
             postingNumber: order.posting_number,
-            productId: product.product_id,
-            sku: product.sku,
+            productId: finalProductId,
+            offerId: product.offer_id || '',
             productName: product.name
         };
         const modal = document.getElementById('countryModal');
-        document.getElementById('countryProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>SKU:</strong> ${product.sku || '—'}`;
+        document.getElementById('countryProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Offer ID:</strong> ${product.offer_id || '—'}`;
         modal.style.display = 'flex';
         setTimeout(() => searchInput?.focus(), 100);
     }
@@ -836,10 +947,25 @@
             showToast('Выберите страну или введите код', true);
             return;
         }
+        
         let finalProductId = currentCountryData.productId;
-        if (finalProductId === 0 && currentCountryData.sku) {
-            finalProductId = currentCountryData.sku;
+        if (finalProductId === 0 && currentCountryData.offerId) {
+            const order = orders.find(o => o.posting_number === currentCountryData.postingNumber);
+            if (order) {
+                for (const p of order.products) {
+                    if (p.offer_id === currentCountryData.offerId && p.product_id !== 0) {
+                        finalProductId = p.product_id;
+                        break;
+                    }
+                }
+            }
         }
+        
+        if (finalProductId === 0) {
+            showToast('Ошибка: не удалось определить ID товара', true);
+            return;
+        }
+        
         try {
             const res = await fetch('/api/countries/set', {
                 method: 'POST',
@@ -965,9 +1091,9 @@
             const order = orders.find(o => o.posting_number === num);
             if (order) {
                 const valid = order.products.filter(p => 
-                    !p.requirements?.is_mandatory_marked && 
-                    !p.requirements?.is_gtd_required && 
-                    !p.requirements?.is_country_required
+                    !p.is_mandatory_marked && 
+                    !p.is_gtd_required && 
+                    !p.is_country_required
                 );
                 if (valid.length) {
                     toShip.push({
@@ -1021,9 +1147,9 @@
             const order = orders.find(o => o.posting_number === num);
             if (order) {
                 const valid = order.products.filter(p => 
-                    !p.requirements?.is_mandatory_marked && 
-                    !p.requirements?.is_gtd_required && 
-                    !p.requirements?.is_country_required
+                    !p.is_mandatory_marked && 
+                    !p.is_gtd_required && 
+                    !p.is_country_required
                 );
                 if (valid.length) {
                     toShip.push({
@@ -1105,7 +1231,7 @@
             isAuth = true;
             document.getElementById('authPanel').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
-            updateAvailableCodes();
+            await updateAvailableCodes();
             await loadAutoModeStatus();
             await loadAllStats();
             loadOrders();
@@ -1124,7 +1250,6 @@
         document.getElementById('countryConfirmBtn').onclick = setCountry;
         document.getElementById('countryCancelBtn').onclick = closeAllModals;
         
-        // Глобальный авто-режим
         document.getElementById('autoModeGlobal').addEventListener('change', async function(e) {
             const enabled = e.target.checked;
             try {
@@ -1141,7 +1266,6 @@
             }
         });
         
-        // Кнопка "Заказать этикетки" (ручной режим)
         document.getElementById('triggerOrderLabelsBtn').addEventListener('click', async function() {
             try {
                 await apiRequest('/api/labels/trigger-order', { method: 'POST' });
@@ -1155,7 +1279,6 @@
             }
         });
         
-        // Кнопка "Скачать этикетки" (ручной режим)
         document.getElementById('triggerDownloadLabelsBtn').addEventListener('click', async function() {
             try {
                 await apiRequest('/api/labels/trigger-download', { method: 'POST' });
