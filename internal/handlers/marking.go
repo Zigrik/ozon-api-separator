@@ -108,7 +108,10 @@ func HandleReloadCodes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleAddMarkings - обработчик добавления маркировки
 func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
+	log.Printf("🔥 HandleAddMarkings вызван")
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -128,6 +131,9 @@ func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("📥 Запрос на добавление маркировки: posting=%s, product_id=%d, offer_id=%s, qty=%d",
+		req.PostingNumber, req.ProductID, req.OfferID, req.Quantity)
+
 	cabinet := config.GetActiveConfig()
 	if cabinet.ClientID == "" || cabinet.APIKey == "" {
 		log.Printf("❌ Кабинет '%s' не настроен", cabinet.Name)
@@ -135,19 +141,23 @@ func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Если product_id = 0, пытаемся найти по offer_id
-	if req.ProductID == 0 && req.OfferID != "" {
+	// Если product_id = 0 или похож на SKU (большое число), ищем правильный
+	if req.ProductID == 0 || req.ProductID > 1000000000 {
+		log.Printf("🔍 product_id = %d, ищем правильный ID...", req.ProductID)
+
 		orders, err := services.GetAwaitingPackagingOrders(cabinet)
 		if err == nil {
 			for _, order := range orders {
 				if order.PostingNumber == req.PostingNumber {
 					for _, p := range order.Products {
-						if p.OfferID == req.OfferID {
-							req.ProductID = p.ProductID
-							if req.ProductID == 0 {
+						if p.OfferID == req.OfferID || p.SKU == req.ProductID {
+							if p.ProductID != 0 {
+								req.ProductID = p.ProductID
+								log.Printf("✅ Найден правильный product_id: %d", req.ProductID)
+							} else if p.SKU != 0 {
 								req.ProductID = p.SKU
+								log.Printf("⚠️ product_id = 0, используем SKU: %d", req.ProductID)
 							}
-							log.Printf("🔧 Найден product_id по offer_id: %d", req.ProductID)
 							break
 						}
 					}
@@ -158,7 +168,7 @@ func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.ProductID <= 0 {
-		log.Printf("❌ Невалидный ProductID: %d", req.ProductID)
+		log.Printf("❌ Невалидный ProductID: %d, OfferID: %s", req.ProductID, req.OfferID)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "error",
 			"message": "Не удалось определить ID товара",
@@ -186,8 +196,15 @@ func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	// Обновляем состояние маркировки в JSON
+	if err := services.UpdateMarkingStatus(cabinet.Key, req.PostingNumber, req.ProductID, req.Codes); err != nil {
+		log.Printf("⚠️ Ошибка обновления состояния маркировки: %v", err)
+	}
+
+	response := map[string]interface{}{
 		"status":  "ok",
 		"message": fmt.Sprintf("Добавлено %d кодов маркировки", req.Quantity),
-	})
+	}
+	log.Printf("📤 Ответ отправлен: %v", response)
+	json.NewEncoder(w).Encode(response)
 }

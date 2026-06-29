@@ -73,6 +73,29 @@ func SaveCabinetState(state *models.CabinetState) error {
 	return nil
 }
 
+// CheckFolderExists - проверяет существование папки для заказа
+func CheckFolderExists(cabinetKey, postingNumber string) bool {
+	cabinet := config.AppConfig.Cabinets[cabinetKey]
+	if cabinet == nil {
+		return false
+	}
+
+	dataPath := cabinet.DataPath
+	if dataPath == "" {
+		dataPath = filepath.Join("data", cabinetKey)
+	}
+
+	parts := strings.Split(postingNumber, "-")
+	folderName := strings.Join(parts[:len(parts)-1], "-")
+	if folderName == "" {
+		folderName = postingNumber
+	}
+
+	folderPath := filepath.Join(dataPath, folderName)
+	_, err := os.Stat(folderPath)
+	return err == nil
+}
+
 // UpdateOrders - обновляет список заказов
 func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error {
 	state, err := LoadCabinetState(cabinetKey)
@@ -101,8 +124,7 @@ func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error
 		if existing, exists := existingOrdersMap[order.PostingNumber]; exists {
 			orderState = *existing
 			orderState.Products = convertProducts(order.Products)
-			// Проверяем наличие папки при каждом обновлении
-			orderState.IsReadyForSplit = CheckFolderExists(cabinetKey, order.PostingNumber)
+			orderState.IsReadyForSplit = CheckFolderExists(cabinetKey, order.PostingNumber) || orderState.IsReadyForSplit
 		} else {
 			orderState = models.OrderState{
 				PostingNumber:   order.PostingNumber,
@@ -112,7 +134,7 @@ func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error
 				Shipments:       make([]models.ShipmentState, 0),
 				Errors:          make([]models.OrderError, 0),
 			}
-			log.Printf("➕ Новый заказ: %s (кабинет: %s, ready_for_split: %v)", order.PostingNumber, cabinetKey, orderState.IsReadyForSplit)
+			log.Printf("➕ Новый заказ: %s (кабинет: %s)", order.PostingNumber, cabinetKey)
 		}
 
 		orderState.LabelsStatus = orderState.CalculateLabelsStatus()
@@ -139,7 +161,7 @@ func UpdateOrderAfterShip(cabinetKey, postingNumber string, shipments []string, 
 	found := false
 	for i := range state.Orders {
 		if state.Orders[i].PostingNumber == postingNumber {
-			state.Orders[i].IsReadyForSplit = false // сбрасываем, так как уже разделили
+			state.Orders[i].IsReadyForSplit = true
 			state.Orders[i].IsDivided = true
 
 			for _, shipment := range shipments {
@@ -301,6 +323,7 @@ func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, code
 		return err
 	}
 
+	found := false
 	for i := range state.Orders {
 		if state.Orders[i].PostingNumber == postingNumber {
 			for j := range state.Orders[i].Products {
@@ -308,8 +331,41 @@ func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, code
 					state.Orders[i].Products[j].Marking.IsCompleted = true
 					state.Orders[i].Products[j].Marking.Codes = codes
 					state.Orders[i].Products[j].Marking.Error = nil
-					log.Printf("🏷️ Маркировка добавлена для товара %d (%d кодов)", productID, len(codes))
+					found = true
+					log.Printf("🏷️ Маркировка обновлена в состоянии для товара %d в заказе %s (%d кодов)",
+						productID, postingNumber, len(codes))
 					break
+				}
+			}
+			break
+		}
+	}
+
+	if !found {
+		log.Printf("⚠️ Товар %d не найден в заказе %s для обновления маркировки", productID, postingNumber)
+	}
+
+	return SaveCabinetState(state)
+}
+
+// UpdateMarkingStatusFromAPI - обновляет статус маркировки из API
+func UpdateMarkingStatusFromAPI(cabinetKey, postingNumber string, markingStatus map[int64]bool) error {
+	state, err := LoadCabinetState(cabinetKey)
+	if err != nil {
+		return err
+	}
+
+	for i := range state.Orders {
+		if state.Orders[i].PostingNumber == postingNumber {
+			for j := range state.Orders[i].Products {
+				if isCompleted, exists := markingStatus[state.Orders[i].Products[j].ProductID]; exists {
+					state.Orders[i].Products[j].Marking.IsCompleted = isCompleted
+					if isCompleted {
+						state.Orders[i].Products[j].Requirements.IsMandatoryMarked = false
+						state.Orders[i].Products[j].Requirements.IsGtdRequired = false
+						log.Printf("✅ Маркировка подтверждена для товара %d в заказе %s",
+							state.Orders[i].Products[j].ProductID, postingNumber)
+					}
 				}
 			}
 			break
@@ -539,26 +595,4 @@ func convertProducts(products []models.Product) []models.ProductState {
 		})
 	}
 	return result
-}
-
-// CheckFolderExists - проверяет существование папки для заказа
-func CheckFolderExists(cabinetKey, postingNumber string) bool {
-	cabinet := config.AppConfig.Cabinets[cabinetKey]
-	if cabinet == nil {
-		return false
-	}
-
-	// Используем папку labels вместо data
-	dataPath := filepath.Join("labels", cabinetKey)
-
-	// Получаем имя папки (без хвостика - последнего дефиса с цифрой)
-	parts := strings.Split(postingNumber, "-")
-	folderName := strings.Join(parts[:len(parts)-1], "-")
-	if folderName == "" {
-		folderName = postingNumber
-	}
-
-	folderPath := filepath.Join(dataPath, folderName)
-	_, err := os.Stat(folderPath)
-	return err == nil
 }

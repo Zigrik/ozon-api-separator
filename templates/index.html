@@ -202,7 +202,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.9.4 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.9.5 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -806,7 +806,9 @@
 
     // ==================== МОДАЛЬНЫЕ ОКНА ====================
     async function openMarkingModal(order, product) {
-        console.log('🏷️ openMarkingModal:', { order: order.posting_number, product });
+        console.log('🏷️ openMarkingModal вызван');
+        console.log('📦 Заказ:', order.posting_number);
+        console.log('🛒 Товар (все поля):', JSON.stringify(product, null, 2));
         
         const available = await updateAvailableCodes();
         if (available < product.quantity) {
@@ -814,21 +816,34 @@
             return;
         }
         
-        let finalProductId = product.product_id;
+        // Ищем правильный product_id в данных заказа
+        let finalProductId = 0;
+        const orderData = orders.find(o => o.posting_number === order.posting_number);
         
-        if (finalProductId === 0 && product.offer_id) {
-            const orderData = orders.find(o => o.posting_number === order.posting_number);
-            if (orderData && orderData.products) {
+        if (orderData && orderData.products) {
+            // Ищем по offer_id
+            if (product.offer_id) {
                 for (const p of orderData.products) {
-                    if (p.offer_id === product.offer_id && p.product_id !== 0) {
-                        finalProductId = p.product_id;
+                    if (p.offer_id === product.offer_id) {
+                        finalProductId = p.product_id || p.sku || 0;
+                        console.log('✅ Найден по offer_id, product_id:', finalProductId);
                         break;
                     }
                 }
             }
+            
+            // Если не нашли, берем первый товар
+            if (finalProductId === 0 && orderData.products.length > 0) {
+                const p = orderData.products[0];
+                finalProductId = p.product_id || p.sku || 0;
+                console.log('✅ Взят первый товар, product_id:', finalProductId);
+            }
         }
         
+        console.log('🏁 Итоговый product_id:', finalProductId);
+        
         if (finalProductId === 0) {
+            console.error('❌ НЕ УДАЛОСЬ НАЙТИ product_id!');
             showToast('❌ Ошибка: не удалось определить ID товара', true);
             return;
         }
@@ -844,7 +859,7 @@
         console.log('✅ currentMarkingData:', currentMarkingData);
         
         const modal = document.getElementById('markingModal');
-        document.getElementById('markingProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Кол-во:</strong> ${product.quantity}<br><strong>Offer ID:</strong> ${product.offer_id || '—'}`;
+        document.getElementById('markingProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Кол-во:</strong> ${product.quantity}<br><strong>Offer ID:</strong> ${product.offer_id || '—'}<br><strong>Product ID:</strong> ${finalProductId}`;
         document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>⚠️ ГТД будет отмечено как отсутствующее автоматически.`;
         modal.style.display = 'flex';
     }
@@ -855,6 +870,7 @@
         console.log('🏷️ addMarkings currentMarkingData:', currentMarkingData);
         
         if (!currentMarkingData.productId || currentMarkingData.productId === 0) {
+            console.error('❌ productId = 0 или отсутствует');
             showToast('❌ Ошибка: не удалось определить ID товара', true);
             return;
         }
@@ -871,18 +887,36 @@
                 return;
             }
             
+            const payload = {
+                posting_number: currentMarkingData.postingNumber,
+                product_id: currentMarkingData.productId,
+                offer_id: currentMarkingData.offerId || '',
+                quantity: currentMarkingData.quantity,
+                codes: codesData.codes
+            };
+            
+            console.log('📤 Отправка на сервер:', payload);
+            
             const res = await fetch('/api/markings/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
-                body: JSON.stringify({
-                    posting_number: currentMarkingData.postingNumber,
-                    product_id: currentMarkingData.productId,
-                    offer_id: currentMarkingData.offerId || '',
-                    quantity: currentMarkingData.quantity,
-                    codes: codesData.codes
-                })
+                body: JSON.stringify(payload)
             });
-            const data = await res.json();
+            
+            console.log('📥 Статус ответа:', res.status);
+            const text = await res.text();
+            console.log('📥 Текст ответа:', text);
+            
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error('❌ Не удалось распарсить JSON:', text);
+                showToast('❌ Ошибка сервера: ' + text.substring(0, 100), true);
+                return;
+            }
+            console.log('📥 Ответ сервера (распарсенный):', data);
+            
             if (data.status === 'ok') {
                 showToast(`✅ ${data.message}`);
                 await updateAvailableCodes();
@@ -892,6 +926,7 @@
                 showToast(`❌ ${data.message}`, true);
             }
         } catch (err) {
+            console.error('❌ Ошибка:', err);
             showToast(`❌ ${err.message}`, true);
         }
     }

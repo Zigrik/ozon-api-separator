@@ -36,7 +36,7 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("✅ Загружено %d заказов из Ozon API", len(orders))
 
-	// Сохраняем состояние в файл (синхронно, чтобы получить is_ready_for_split)
+	// Сохраняем состояние в файл
 	if err := services.UpdateOrders(cabinet.Key, cabinet.Name, orders); err != nil {
 		log.Printf("⚠️ Ошибка сохранения состояния: %v", err)
 	}
@@ -47,7 +47,6 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 		log.Printf("⚠️ Ошибка загрузки состояния: %v", err)
 	}
 
-	// Создаем карту is_ready_for_split по номеру заказа
 	readyMap := make(map[string]bool)
 	if state != nil {
 		for _, orderState := range state.Orders {
@@ -55,7 +54,49 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Обогащаем заказы данными из состояния
+	// Проверяем статус маркировки через API для каждого заказа
+	for i := range orders {
+		order := &orders[i]
+
+		// Проверяем, есть ли товары, требующие маркировки/ГТД
+		needsCheck := false
+		for _, p := range order.Products {
+			if p.IsMandatoryMarked || p.IsGtdRequired {
+				needsCheck = true
+				break
+			}
+		}
+
+		if !needsCheck {
+			continue
+		}
+
+		// Проверяем статус через API
+		markingStatus, err := services.CheckMarkingStatus(cabinet, order.PostingNumber)
+		if err != nil {
+			log.Printf("⚠️ Ошибка проверки статуса маркировки для заказа %s: %v", order.PostingNumber, err)
+			continue
+		}
+
+		// Обновляем статус в JSON
+		if err := services.UpdateMarkingStatusFromAPI(cabinet.Key, order.PostingNumber, markingStatus); err != nil {
+			log.Printf("⚠️ Ошибка обновления статуса маркировки: %v", err)
+		}
+
+		// Обновляем товары в заказе
+		for j := range order.Products {
+			product := &order.Products[j]
+			if isCompleted, exists := markingStatus[product.ProductID]; exists {
+				product.IsMarkingCompleted = isCompleted
+				if isCompleted {
+					product.IsMandatoryMarked = false
+					product.IsGtdRequired = false
+				}
+			}
+		}
+	}
+
+	// Обогащаем заказы данными из состояния (is_ready_for_split)
 	for i := range orders {
 		if isReady, exists := readyMap[orders[i].PostingNumber]; exists {
 			orders[i].IsReadyForSplit = isReady

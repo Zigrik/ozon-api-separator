@@ -232,6 +232,42 @@ type ExemplarCreateResponse struct {
 	} `json:"products"`
 }
 
+// ============ МОДЕЛИ ДЛЯ СТАТУСА МАРКИРОВКИ ============
+
+// ExemplarStatusRequest - запрос на получение статуса маркировки
+type ExemplarStatusRequest struct {
+	PostingNumber string `json:"posting_number"`
+}
+
+// ExemplarStatusResponse - ответ на запрос статуса маркировки
+type ExemplarStatusResponse struct {
+	PostingNumber string `json:"posting_number"`
+	Status        string `json:"status"`
+	Products      []struct {
+		ProductID int64 `json:"product_id"`
+		Exemplars []struct {
+			ExemplarID   int64  `json:"exemplar_id"`
+			GTD          string `json:"gtd"`
+			IsGTDAbsent  bool   `json:"is_gtd_absent"`
+			IsRNPTAbsent bool   `json:"is_rnpt_absent"`
+			RNPT         string `json:"rnpt"`
+			Weight       int    `json:"weight"`
+			Marks        []struct {
+				Mark        string   `json:"mark"`
+				MarkType    string   `json:"mark_type"`
+				CheckStatus string   `json:"check_status"`
+				ErrorCodes  []string `json:"error_codes"`
+			} `json:"marks"`
+			GTDCheckStatus    string   `json:"gtd_check_status"`
+			GTDErrorCodes     []string `json:"gtd_error_codes"`
+			RNPTCheckStatus   string   `json:"rnpt_check_status"`
+			RNPTErrorCodes    []string `json:"rnpt_error_codes"`
+			WeightCheckStatus string   `json:"weight_check_status"`
+			WeightErrorCodes  []string `json:"weight_error_codes"`
+		} `json:"exemplars"`
+	} `json:"products"`
+}
+
 type Mark struct {
 	Mark     string `json:"mark"`
 	MarkType string `json:"mark_type"`

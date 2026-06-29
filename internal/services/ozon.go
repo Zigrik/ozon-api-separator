@@ -161,8 +161,6 @@ func CreateLabelTask(cab *models.CabinetConfig, postingNumbers []string) (int64,
 	return response.Result.Tasks[0].TaskID, nil
 }
 
-// ============ ФУНКЦИИ ДЛЯ ЭТИКЕТОК ============
-
 // GetLabelStatus - проверяет статус задачи по ID
 func GetLabelStatus(cab *models.CabinetConfig, taskID int64) (string, error) {
 	url := "https://api-seller.ozon.ru/v1/posting/fbs/package-label/get"
@@ -253,7 +251,6 @@ func SaveLabelToFile(cab *models.CabinetConfig, postingNumber string, pdfData []
 		dataPath = filepath.Join("data", cab.Key)
 	}
 
-	// Получаем префикс (обрезаем последний дефис с цифрой)
 	parts := strings.Split(postingNumber, "-")
 	folderName := strings.Join(parts[:len(parts)-1], "-")
 	if folderName == "" {
@@ -364,6 +361,14 @@ func getExemplarIDs(cab *models.CabinetConfig, postingNumber string) (*models.Ex
 		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
 	}
 
+	log.Printf("📦 Получены exemplar_id для заказа %s:", postingNumber)
+	for _, p := range resp.Products {
+		log.Printf("  ProductID: %d, exemplars: %d", p.ProductID, len(p.Exemplars))
+		for _, e := range p.Exemplars {
+			log.Printf("    ExemplarID: %d", e.ExemplarID)
+		}
+	}
+
 	return &resp, nil
 }
 
@@ -434,8 +439,50 @@ func SetGTDAsAbsent(cab *models.CabinetConfig, postingNumber string, productID i
 
 // ============ ФУНКЦИИ ДЛЯ МАРКИРОВКИ ============
 
+// CheckMarkingStatus - проверяет статус маркировки для заказа
+func CheckMarkingStatus(cab *models.CabinetConfig, postingNumber string) (map[int64]bool, error) {
+	url := "https://api-seller.ozon.ru/v5/fbs/posting/product/exemplar/status"
+
+	req := models.ExemplarStatusRequest{
+		PostingNumber: postingNumber,
+	}
+
+	respBody, err := MakeOzonRequest(cab, "POST", url, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var response models.ExemplarStatusResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
+	}
+
+	// Проверяем, что все маркировки валидны
+	result := make(map[int64]bool)
+	for _, product := range response.Products {
+		allValid := true
+		for _, exemplar := range product.Exemplars {
+			for _, mark := range exemplar.Marks {
+				if mark.CheckStatus != "valid" || len(mark.ErrorCodes) > 0 {
+					allValid = false
+					break
+				}
+			}
+			if !allValid {
+				break
+			}
+		}
+		result[product.ProductID] = allValid
+	}
+
+	log.Printf("📊 Статус маркировки для заказа %s: %v", postingNumber, result)
+	return result, nil
+}
+
 // AddMarkingsForOrder - добавляет маркировку для товара
 func AddMarkingsForOrder(cab *models.CabinetConfig, postingNumber string, productID int64, quantity int, codes []string) error {
+	log.Printf("🏷️ AddMarkingsForOrder: posting=%s, product_id=%d, quantity=%d", postingNumber, productID, quantity)
+
 	exemplars, err := getExemplarIDs(cab, postingNumber)
 	if err != nil {
 		return fmt.Errorf("ошибка получения exemplar_id: %w", err)
@@ -451,8 +498,17 @@ func AddMarkingsForOrder(cab *models.CabinetConfig, postingNumber string, produc
 		}
 	}
 
-	if len(ids) < quantity {
-		return fmt.Errorf("недостаточно exemplar_id для товара %d: нужно %d, доступно %d", productID, quantity, len(ids))
+	if len(ids) == 0 {
+		return fmt.Errorf("не найдены exemplar_id для товара %d в заказе %s", productID, postingNumber)
+	}
+
+	actualQuantity := len(ids)
+	if actualQuantity < quantity {
+		log.Printf("⚠️ Уменьшено количество маркировок с %d до %d (доступно exemplar_id)", quantity, actualQuantity)
+		if len(codes) > actualQuantity {
+			codes = codes[:actualQuantity]
+		}
+		quantity = actualQuantity
 	}
 
 	marks := make([]models.Mark, quantity)
@@ -476,31 +532,41 @@ func AddMarkingsForOrder(cab *models.CabinetConfig, postingNumber string, produc
 		}{
 			{
 				ProductID: productID,
-				Exemplars: []struct {
+				Exemplars: make([]struct {
 					ExemplarID   int64         `json:"exemplar_id"`
 					IsGTDAbsent  bool          `json:"is_gtd_absent"`
 					IsRNPTAbsent bool          `json:"is_rnpt_absent"`
 					Marks        []models.Mark `json:"marks"`
-				}{
-					{
-						ExemplarID:   ids[0],
-						IsGTDAbsent:  true,
-						IsRNPTAbsent: true,
-						Marks:        marks,
-					},
-				},
+				}, 0),
 			},
 		},
 	}
+
+	for i, id := range ids[:quantity] {
+		request.Products[0].Exemplars = append(request.Products[0].Exemplars, struct {
+			ExemplarID   int64         `json:"exemplar_id"`
+			IsGTDAbsent  bool          `json:"is_gtd_absent"`
+			IsRNPTAbsent bool          `json:"is_rnpt_absent"`
+			Marks        []models.Mark `json:"marks"`
+		}{
+			ExemplarID:   id,
+			IsGTDAbsent:  true,
+			IsRNPTAbsent: true,
+			Marks:        []models.Mark{marks[i]},
+		})
+	}
+
+	log.Printf("📤 Отправка запроса на добавление маркировки: %d exemplars", len(request.Products[0].Exemplars))
 
 	_, err = MakeOzonRequest(cab, "POST", "https://api-seller.ozon.ru/v6/fbs/posting/product/exemplar/set", request)
 	if err != nil {
 		return err
 	}
 
-	if err := UpdateMarkingStatus(cab.Key, postingNumber, productID, codes); err != nil {
+	if err := UpdateMarkingStatus(cab.Key, postingNumber, productID, codes[:quantity]); err != nil {
 		log.Printf("⚠️ Ошибка обновления состояния маркировки: %v", err)
 	}
 
+	log.Printf("✅ Маркировка добавлена для %d экземпляров товара %d", quantity, productID)
 	return nil
 }
