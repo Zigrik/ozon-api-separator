@@ -350,26 +350,66 @@ func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, code
 
 // UpdateMarkingStatusFromAPI - обновляет статус маркировки из API
 func UpdateMarkingStatusFromAPI(cabinetKey, postingNumber string, markingStatus map[int64]bool) error {
+	log.Printf("🔄 UpdateMarkingStatusFromAPI: заказ %s, статусы: %v", postingNumber, markingStatus)
+
 	state, err := LoadCabinetState(cabinetKey)
 	if err != nil {
+		log.Printf("❌ Ошибка загрузки состояния: %v", err)
 		return err
 	}
 
+	updated := false
 	for i := range state.Orders {
 		if state.Orders[i].PostingNumber == postingNumber {
+			log.Printf("   Найден заказ %s в состоянии", postingNumber)
 			for j := range state.Orders[i].Products {
-				if isCompleted, exists := markingStatus[state.Orders[i].Products[j].ProductID]; exists {
-					state.Orders[i].Products[j].Marking.IsCompleted = isCompleted
-					if isCompleted {
-						state.Orders[i].Products[j].Requirements.IsMandatoryMarked = false
-						state.Orders[i].Products[j].Requirements.IsGtdRequired = false
-						log.Printf("✅ Маркировка подтверждена для товара %d в заказе %s",
-							state.Orders[i].Products[j].ProductID, postingNumber)
+				product := &state.Orders[i].Products[j]
+				log.Printf("   Проверка товара %d: product_id=%d, sku=%d", j, product.ProductID, product.SKU)
+
+				// Сначала пробуем найти по SKU (если product_id = 0)
+				if product.ProductID == 0 && product.SKU != 0 {
+					if isCompleted, exists := markingStatus[product.SKU]; exists && isCompleted {
+						product.Marking.IsCompleted = true
+						product.Requirements.IsMandatoryMarked = false
+						product.Requirements.IsGtdRequired = false
+						updated = true
+						log.Printf("   ✅ Маркировка подтверждена для товара %d (по SKU) в заказе %s", product.SKU, postingNumber)
+						continue
+					}
+				}
+
+				// Проверяем по product_id
+				if isCompleted, exists := markingStatus[product.ProductID]; exists && isCompleted {
+					product.Marking.IsCompleted = true
+					product.Requirements.IsMandatoryMarked = false
+					product.Requirements.IsGtdRequired = false
+					updated = true
+					log.Printf("   ✅ Маркировка подтверждена для товара %d (product_id) в заказе %s", product.ProductID, postingNumber)
+					continue
+				}
+
+				// Если все еще не нашли, пробуем по SKU (запасной вариант)
+				if !product.Marking.IsCompleted && product.SKU != 0 {
+					for pid, isCompleted := range markingStatus {
+						if pid == product.SKU && isCompleted {
+							product.Marking.IsCompleted = true
+							product.Requirements.IsMandatoryMarked = false
+							product.Requirements.IsGtdRequired = false
+							updated = true
+							log.Printf("   ✅ Маркировка подтверждена для товара %d (по SKU через цикл) в заказе %s", product.SKU, postingNumber)
+							break
+						}
 					}
 				}
 			}
 			break
 		}
+	}
+
+	if !updated {
+		log.Printf("⚠️ Не найдены товары для обновления маркировки в заказе %s", postingNumber)
+	} else {
+		log.Printf("✅ Состояние обновлено для заказа %s", postingNumber)
 	}
 
 	return SaveCabinetState(state)

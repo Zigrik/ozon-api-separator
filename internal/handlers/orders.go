@@ -41,33 +41,48 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 		log.Printf("⚠️ Ошибка сохранения состояния: %v", err)
 	}
 
-	// Загружаем состояние чтобы получить is_ready_for_split
+	// Загружаем состояние чтобы получить is_ready_for_split и статус маркировки
 	state, err := services.LoadCabinetState(cabinet.Key)
 	if err != nil {
 		log.Printf("⚠️ Ошибка загрузки состояния: %v", err)
 	}
 
+	// Создаем карты для обогащения данных
 	readyMap := make(map[string]bool)
+	markingMap := make(map[string]map[int64]bool)
+
 	if state != nil {
+		log.Printf("📂 Загружено состояние из JSON, заказов: %d", len(state.Orders))
 		for _, orderState := range state.Orders {
 			readyMap[orderState.PostingNumber] = orderState.IsReadyForSplit
+			for _, product := range orderState.Products {
+				if markingMap[orderState.PostingNumber] == nil {
+					markingMap[orderState.PostingNumber] = make(map[int64]bool)
+				}
+				markingMap[orderState.PostingNumber][product.ProductID] = product.Marking.IsCompleted
+				log.Printf("   JSON: заказ %s, товар %d, marking_completed=%v",
+					orderState.PostingNumber, product.ProductID, product.Marking.IsCompleted)
+			}
 		}
 	}
 
 	// Проверяем статус маркировки через API для каждого заказа
 	for i := range orders {
 		order := &orders[i]
+		log.Printf("🔍 Обработка заказа %s", order.PostingNumber)
 
 		// Проверяем, есть ли товары, требующие маркировки/ГТД
 		needsCheck := false
 		for _, p := range order.Products {
 			if p.IsMandatoryMarked || p.IsGtdRequired {
 				needsCheck = true
-				break
+				log.Printf("   Товар %d требует маркировки/ГТД: is_mandatory_marked=%v, is_gtd_required=%v",
+					p.ProductID, p.IsMandatoryMarked, p.IsGtdRequired)
 			}
 		}
 
 		if !needsCheck {
+			log.Printf("   Заказ %s не требует маркировки, пропускаем", order.PostingNumber)
 			continue
 		}
 
@@ -78,6 +93,8 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		log.Printf("   Статус маркировки из API для заказа %s: %v", order.PostingNumber, markingStatus)
+
 		// Обновляем статус в JSON
 		if err := services.UpdateMarkingStatusFromAPI(cabinet.Key, order.PostingNumber, markingStatus); err != nil {
 			log.Printf("⚠️ Ошибка обновления статуса маркировки: %v", err)
@@ -86,20 +103,93 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 		// Обновляем товары в заказе
 		for j := range order.Products {
 			product := &order.Products[j]
-			if isCompleted, exists := markingStatus[product.ProductID]; exists {
-				product.IsMarkingCompleted = isCompleted
-				if isCompleted {
+			log.Printf("   Проверка товара %d: product_id=%d, sku=%d", j, product.ProductID, product.SKU)
+
+			// Сначала пробуем найти по SKU (если product_id = 0)
+			if product.ProductID == 0 && product.SKU != 0 {
+				if isCompleted, exists := markingStatus[product.SKU]; exists && isCompleted {
+					product.IsMarkingCompleted = true
 					product.IsMandatoryMarked = false
 					product.IsGtdRequired = false
+					log.Printf("   ✅ Маркировка подтверждена для товара %d (по SKU) в заказе %s", product.SKU, order.PostingNumber)
+					continue
+				}
+			}
+
+			// Проверяем по product_id
+			if isCompleted, exists := markingStatus[product.ProductID]; exists && isCompleted {
+				product.IsMarkingCompleted = true
+				product.IsMandatoryMarked = false
+				product.IsGtdRequired = false
+				log.Printf("   ✅ Маркировка подтверждена для товара %d (product_id) в заказе %s", product.ProductID, order.PostingNumber)
+				continue
+			}
+
+			// Если все еще не нашли, пробуем по SKU (запасной вариант)
+			if !product.IsMarkingCompleted && product.SKU != 0 {
+				for pid, isCompleted := range markingStatus {
+					if pid == product.SKU && isCompleted {
+						product.IsMarkingCompleted = true
+						product.IsMandatoryMarked = false
+						product.IsGtdRequired = false
+						log.Printf("   ✅ Маркировка подтверждена для товара %d (по SKU через цикл) в заказе %s", product.SKU, order.PostingNumber)
+						break
+					}
+				}
+			}
+
+			if !product.IsMarkingCompleted {
+				log.Printf("   ❌ Маркировка НЕ подтверждена для товара %d (product_id=%d, sku=%d)",
+					j, product.ProductID, product.SKU)
+			}
+		}
+	}
+
+	// Дополнительно проверяем состояние из JSON
+	if markingMap != nil {
+		log.Printf("📂 Проверка состояния из JSON")
+		for _, order := range orders {
+			if markingMap[order.PostingNumber] != nil {
+				for j := range order.Products {
+					product := &order.Products[j]
+					// Проверяем по product_id
+					if isCompleted, exists := markingMap[order.PostingNumber][product.ProductID]; exists && isCompleted {
+						product.IsMarkingCompleted = true
+						product.IsMandatoryMarked = false
+						product.IsGtdRequired = false
+						log.Printf("   ✅ Из JSON: маркировка подтверждена для товара %d в заказе %s", product.ProductID, order.PostingNumber)
+					}
+					// Проверяем по SKU
+					if !product.IsMarkingCompleted && product.SKU != 0 {
+						for pid, isCompleted := range markingMap[order.PostingNumber] {
+							if pid == product.SKU && isCompleted {
+								product.IsMarkingCompleted = true
+								product.IsMandatoryMarked = false
+								product.IsGtdRequired = false
+								log.Printf("   ✅ Из JSON (по SKU): маркировка подтверждена для товара %d в заказе %s", product.SKU, order.PostingNumber)
+								break
+							}
+						}
+					}
 				}
 			}
 		}
 	}
 
-	// Обогащаем заказы данными из состояния (is_ready_for_split)
+	// Обогащаем is_ready_for_split
 	for i := range orders {
 		if isReady, exists := readyMap[orders[i].PostingNumber]; exists {
 			orders[i].IsReadyForSplit = isReady
+		}
+	}
+
+	// Логируем итоговые данные перед отправкой
+	log.Printf("📤 Итоговые данные для отправки в веб-форму:")
+	for _, order := range orders {
+		for _, product := range order.Products {
+			log.Printf("   Заказ %s: товар %d, marking_completed=%v, mandatory_marked=%v, gtd_required=%v",
+				order.PostingNumber, product.ProductID, product.IsMarkingCompleted,
+				product.IsMandatoryMarked, product.IsGtdRequired)
 		}
 	}
 

@@ -202,7 +202,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v0.9.5 beta</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v0.9.6 beta</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -400,18 +400,12 @@
                                     let warnings = [];
                                     let priceVal = typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0;
                                     
-                                    if (p.is_mandatory_marked || p.is_gtd_required) {
-                                        if (!p.marking?.is_completed) {
-                                            warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
-                                        } else {
+                                    if (p.is_mandatory_marked || p.is_gtd_required || p.is_marking_completed) {
+                                        if (p.is_marking_completed) {
                                             warnings.push('<span class="mark-completed">✅ Информация добавлена</span>');
-                                        }
-                                    }
-                                    if (p.is_country_required) {
-                                        if (!p.country?.is_completed) {
-                                            warnings.push('<span class="country-warning clickable" data-action="country">🌍 Страна</span>');
                                         } else {
-                                            warnings.push(`<span class="mark-completed">✅ Страна: ${p.country?.code || 'указана'}</span>`);
+                                            // Требуется маркировка, но еще не добавлена
+                                            warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
                                         }
                                     }
                                     return `
@@ -665,7 +659,7 @@
                     }
                 }
                 if (product.is_mandatory_marked || product.is_gtd_required) {
-                    if (!product.marking?.is_completed) {
+                    if (!product.is_marking_completed) {
                         markingRequired += product.quantity;
                     }
                 }
@@ -816,12 +810,10 @@
             return;
         }
         
-        // Ищем правильный product_id в данных заказа
         let finalProductId = 0;
         const orderData = orders.find(o => o.posting_number === order.posting_number);
         
         if (orderData && orderData.products) {
-            // Ищем по offer_id
             if (product.offer_id) {
                 for (const p of orderData.products) {
                     if (p.offer_id === product.offer_id) {
@@ -832,7 +824,6 @@
                 }
             }
             
-            // Если не нашли, берем первый товар
             if (finalProductId === 0 && orderData.products.length > 0) {
                 const p = orderData.products[0];
                 finalProductId = p.product_id || p.sku || 0;
