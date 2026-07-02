@@ -89,6 +89,7 @@ func downloadWorker() {
 func autoUpdateOrdersWorker() {
 	for {
 		if atomic.LoadInt32(&KeyAutoUpdateOrders) == 1 {
+			// Обновляем заказы для всех кабинетов
 			for key, cabinet := range config.AppConfig.Cabinets {
 				if cabinet.ClientID == "" || cabinet.APIKey == "" {
 					continue
@@ -103,6 +104,11 @@ func autoUpdateOrdersWorker() {
 				if err := UpdateOrders(key, cabinet.Name, orders); err != nil {
 					log.Printf("⚠️ Авто-обновление: ошибка сохранения для кабинета %s: %v", cabinet.Name, err)
 				}
+			}
+
+			// После обновления заказов - проверяем заказы готовые к разделению
+			if err := processReadyForSplitOrders(); err != nil {
+				log.Printf("⚠️ Авто-разделение: ошибка обработки заказов: %v", err)
 			}
 
 			time.Sleep(25 * time.Second)
