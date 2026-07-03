@@ -1,12 +1,12 @@
 package services
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,9 +20,10 @@ var stateMutex sync.Mutex
 
 // GetOrdersFilePath - возвращает путь к файлу состояния для конкретного кабинета
 func GetOrdersFilePath(cabinetKey string) string {
-	os.MkdirAll("orders", 0755)
+	ordersPath := config.GetOrdersPath()
+	os.MkdirAll(ordersPath, 0755)
 	dateStr := time.Now().Format("2006_01_02")
-	return filepath.Join("orders", fmt.Sprintf("orders_%s_%s.json", cabinetKey, dateStr))
+	return filepath.Join(ordersPath, fmt.Sprintf("orders_%s_%s.json", cabinetKey, dateStr))
 }
 
 // LoadCabinetState - загружает состояние кабинета из файла
@@ -74,17 +75,9 @@ func SaveCabinetState(state *models.CabinetState) error {
 	return nil
 }
 
-// CheckFolderExists - проверяет существование папки для заказа
+// CheckFolderExists - проверяет существование папки для заказа в labels
 func CheckFolderExists(cabinetKey, postingNumber string) bool {
-	cabinet := config.AppConfig.Cabinets[cabinetKey]
-	if cabinet == nil {
-		return false
-	}
-
-	dataPath := cabinet.DataPath
-	if dataPath == "" {
-		dataPath = filepath.Join("data", cabinetKey)
-	}
+	labelsPath := config.GetLabelsPathForCabinet(cabinetKey)
 
 	parts := strings.Split(postingNumber, "-")
 	folderName := strings.Join(parts[:len(parts)-1], "-")
@@ -92,9 +85,24 @@ func CheckFolderExists(cabinetKey, postingNumber string) bool {
 		folderName = postingNumber
 	}
 
-	folderPath := filepath.Join(dataPath, folderName)
+	folderPath := filepath.Join(labelsPath, folderName)
 	_, err := os.Stat(folderPath)
 	return err == nil
+}
+
+// getOrderPrefix - возвращает префикс заказа (без хвостика -N)
+// 0254620610-0022-1 → 0254620610-0022
+// 0254620610-0022   → 0254620610-0022
+func getOrderPrefix(orderNumber string) string {
+	parts := strings.Split(orderNumber, "-")
+	if len(parts) < 3 {
+		return orderNumber
+	}
+	lastPart := parts[len(parts)-1]
+	if _, err := strconv.Atoi(lastPart); err == nil {
+		return strings.Join(parts[:len(parts)-1], "-")
+	}
+	return orderNumber
 }
 
 // UpdateOrders - обновляет список заказов
@@ -328,13 +336,17 @@ func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, code
 	for i := range state.Orders {
 		if state.Orders[i].PostingNumber == postingNumber {
 			for j := range state.Orders[i].Products {
-				if state.Orders[i].Products[j].ProductID == productID {
-					state.Orders[i].Products[j].Marking.IsCompleted = true
-					state.Orders[i].Products[j].Marking.Codes = codes
-					state.Orders[i].Products[j].Marking.Error = nil
+				product := &state.Orders[i].Products[j]
+				// Ищем по product_id, SKU или OfferID
+				if product.ProductID == productID || product.SKU == productID {
+					product.Marking.IsCompleted = true
+					product.Marking.Codes = codes
+					product.Marking.Error = nil
+					product.Requirements.IsMandatoryMarked = false
+					product.Requirements.IsGtdRequired = false
 					found = true
-					log.Printf("🏷️ Маркировка обновлена в состоянии для товара %d в заказе %s (%d кодов)",
-						productID, postingNumber, len(codes))
+					log.Printf("🏷️ Маркировка обновлена в состоянии для товара %d (SKU=%d) в заказе %s (%d кодов)",
+						productID, product.SKU, postingNumber, len(codes))
 					break
 				}
 			}
@@ -367,7 +379,6 @@ func UpdateMarkingStatusFromAPI(cabinetKey, postingNumber string, markingStatus 
 				product := &state.Orders[i].Products[j]
 				log.Printf("   Проверка товара %d: product_id=%d, sku=%d", j, product.ProductID, product.SKU)
 
-				// Сначала пробуем найти по SKU (если product_id = 0)
 				if product.ProductID == 0 && product.SKU != 0 {
 					if isCompleted, exists := markingStatus[product.SKU]; exists && isCompleted {
 						product.Marking.IsCompleted = true
@@ -379,7 +390,6 @@ func UpdateMarkingStatusFromAPI(cabinetKey, postingNumber string, markingStatus 
 					}
 				}
 
-				// Проверяем по product_id
 				if isCompleted, exists := markingStatus[product.ProductID]; exists && isCompleted {
 					product.Marking.IsCompleted = true
 					product.Requirements.IsMandatoryMarked = false
@@ -389,7 +399,6 @@ func UpdateMarkingStatusFromAPI(cabinetKey, postingNumber string, markingStatus 
 					continue
 				}
 
-				// Если все еще не нашли, пробуем по SKU (запасной вариант)
 				if !product.Marking.IsCompleted && product.SKU != 0 {
 					for pid, isCompleted := range markingStatus {
 						if pid == product.SKU && isCompleted {
@@ -608,6 +617,342 @@ func processPendingDownloads() error {
 	return SaveCabinetState(state)
 }
 
+// processReadyForSplitOrders - обрабатывает заказы с is_ready_for_split = true
+func processReadyForSplitOrders() error {
+	cabinet := config.GetActiveConfig()
+	if cabinet == nil {
+		return fmt.Errorf("активный кабинет не найден")
+	}
+
+	state, err := LoadCabinetState(cabinet.Key)
+	if err != nil {
+		return err
+	}
+
+	processed := 0
+	for i := range state.Orders {
+		order := &state.Orders[i]
+
+		if !order.IsReadyForSplit || order.IsDivided {
+			continue
+		}
+
+		log.Printf("🔄 Авто-разделение: обработка заказа %s", order.PostingNumber)
+
+		needsMarking := false
+		for _, product := range order.Products {
+			if product.Requirements.IsMandatoryMarked || product.Requirements.IsGtdRequired {
+				needsMarking = true
+				break
+			}
+		}
+
+		if !needsMarking {
+			if err := autoSplitOrder(cabinet.Key, order); err != nil {
+				log.Printf("❌ Авто-разделение: ошибка разделения заказа %s: %v", order.PostingNumber, err)
+				continue
+			}
+			processed++
+			continue
+		}
+
+		if err := processMarkingForOrder(cabinet.Key, order); err != nil {
+			log.Printf("⚠️ Авто-разделение: ошибка обработки маркировки для заказа %s: %v", order.PostingNumber, err)
+			continue
+		}
+
+		allMarkingCompleted := true
+		for _, product := range order.Products {
+			if (product.Requirements.IsMandatoryMarked || product.Requirements.IsGtdRequired) && !product.Marking.IsCompleted {
+				allMarkingCompleted = false
+				break
+			}
+		}
+
+		if allMarkingCompleted {
+			if err := autoSplitOrder(cabinet.Key, order); err != nil {
+				log.Printf("❌ Авто-разделение: ошибка разделения заказа %s: %v", order.PostingNumber, err)
+				continue
+			}
+			processed++
+		} else {
+			log.Printf("⏳ Авто-разделение: заказ %s ожидает маркировки", order.PostingNumber)
+		}
+	}
+
+	if processed > 0 {
+		log.Printf("✅ Авто-разделение: обработано %d заказов", processed)
+		return SaveCabinetState(state)
+	}
+	return nil
+}
+
+// processMarkingForOrder - обрабатывает маркировку для заказа из CSV файла
+func processMarkingForOrder(cabinetKey string, order *models.OrderState) error {
+	labelsPath := config.GetLabelsPathForCabinet(cabinetKey)
+	folderName := order.GetFolderName()
+	folderPath := filepath.Join(labelsPath, folderName)
+
+	var csvFiles []string
+
+	// 1. Ищем CSV файлы в папке заказа
+	if files, err := os.ReadDir(folderPath); err == nil {
+		for _, f := range files {
+			if !f.IsDir() && strings.HasSuffix(strings.ToLower(f.Name()), ".csv") {
+				csvFiles = append(csvFiles, filepath.Join(folderPath, f.Name()))
+			}
+		}
+	}
+
+	// 2. Если не нашли в папке заказа - ищем в корне кабинета
+	if len(csvFiles) == 0 {
+		if files, err := os.ReadDir(labelsPath); err == nil {
+			for _, f := range files {
+				if !f.IsDir() && strings.HasSuffix(strings.ToLower(f.Name()), ".csv") {
+					csvFiles = append(csvFiles, filepath.Join(labelsPath, f.Name()))
+				}
+			}
+		}
+	}
+
+	if len(csvFiles) == 0 {
+		return nil
+	}
+
+	log.Printf("📄 Авто-разделение: найдено %d CSV файлов для заказа %s", len(csvFiles), order.PostingNumber)
+
+	type MarkItem struct {
+		OrderNumber string
+		OfferID     string
+		Code        string
+	}
+	var allItems []MarkItem
+	var allLines []string
+	var filePaths []string
+
+	for _, csvPath := range csvFiles {
+		data, err := os.ReadFile(csvPath)
+		if err != nil {
+			continue
+		}
+		filePaths = append(filePaths, csvPath)
+
+		content := string(data)
+		lines := strings.Split(content, "\n")
+
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			// Удаляем все управляющие символы
+			line = strings.Map(func(r rune) rune {
+				if r < 32 && r != '\t' && r != '\n' && r != '\r' {
+					return -1
+				}
+				return r
+			}, line)
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			allLines = append(allLines, line)
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				orderNum := strings.TrimSpace(parts[0])
+				offerID := strings.TrimSpace(parts[1])
+				code := strings.TrimSpace(parts[2])
+				allItems = append(allItems, MarkItem{
+					OrderNumber: orderNum,
+					OfferID:     offerID,
+					Code:        code,
+				})
+			}
+		}
+	}
+
+	log.Printf("📄 Прочитано строк из CSV: %d", len(allLines))
+	for i, item := range allItems {
+		log.Printf("   Строка %d: order='%s', offer='%s'", i, item.OrderNumber, item.OfferID)
+	}
+
+	if len(allItems) == 0 {
+		return nil
+	}
+
+	prefix := order.GetFolderName()
+	log.Printf("🔍 Поиск строк для префикса: '%s'", prefix)
+
+	var validItems []MarkItem
+	var linesToRemove []int
+
+	for idx, item := range allItems {
+		itemPrefix := getOrderPrefix(item.OrderNumber)
+		log.Printf("   Строка %d: исходный номер='%s', itemPrefix='%s'", idx, item.OrderNumber, itemPrefix)
+		log.Printf("   Сравнение: itemPrefix='%s' == prefix='%s'? %v", itemPrefix, prefix, itemPrefix == prefix)
+		if itemPrefix == prefix {
+			validItems = append(validItems, item)
+			linesToRemove = append(linesToRemove, idx)
+		}
+	}
+
+	if len(validItems) == 0 {
+		log.Printf("ℹ️ Авто-разделение: нет строк для заказа %s в CSV", order.PostingNumber)
+		return nil
+	}
+
+	log.Printf("📦 Авто-разделение: найдено %d маркировок для заказа %s", len(validItems), order.PostingNumber)
+	for i, item := range validItems {
+		log.Printf("   Маркировка %d: offer=%s", i, item.OfferID)
+	}
+
+	marksByOffer := make(map[string][]string)
+	for _, item := range validItems {
+		marksByOffer[item.OfferID] = append(marksByOffer[item.OfferID], item.Code)
+	}
+
+	cabinet := config.GetActiveConfig()
+	allMarkingAdded := true
+
+	for offerID, codes := range marksByOffer {
+		for j := range order.Products {
+			product := &order.Products[j]
+			if product.OfferID == offerID && (product.Requirements.IsMandatoryMarked || product.Requirements.IsGtdRequired) {
+				if len(codes) >= product.Quantity {
+					// Определяем правильный product_id
+					productID := product.ProductID
+					if productID == 0 {
+						productID = product.SKU
+					}
+					if productID == 0 {
+						log.Printf("❌ Не удалось определить product_id для товара %s", offerID)
+						allMarkingAdded = false
+						break
+					}
+
+					if err := AddMarkingsForOrder(cabinet, order.PostingNumber, productID, product.Quantity, codes[:product.Quantity]); err != nil {
+						log.Printf("❌ Авто-разделение: ошибка добавления маркировки для товара %s: %v", offerID, err)
+						allMarkingAdded = false
+					} else {
+						product.Marking.IsCompleted = true
+						product.Requirements.IsMandatoryMarked = false
+						product.Requirements.IsGtdRequired = false
+						log.Printf("✅ Авто-разделение: добавлена маркировка для товара %s (%d кодов)", offerID, product.Quantity)
+					}
+				} else {
+					log.Printf("⚠️ Авто-разделение: недостаточно марок для товара %s: нужно %d, есть %d", offerID, product.Quantity, len(codes))
+					allMarkingAdded = false
+				}
+				break
+			}
+		}
+	}
+
+	if !allMarkingAdded {
+		return fmt.Errorf("не все маркировки добавлены для заказа %s", order.PostingNumber)
+	}
+
+	if len(linesToRemove) > 0 && len(filePaths) > 0 {
+		var newLines []string
+		for i, line := range allLines {
+			shouldRemove := false
+			for _, idx := range linesToRemove {
+				if i == idx {
+					shouldRemove = true
+					break
+				}
+			}
+			if !shouldRemove {
+				newLines = append(newLines, line)
+			}
+		}
+
+		if len(newLines) == 0 {
+			os.Remove(filePaths[0])
+			log.Printf("🗑️ Авто-разделение: CSV файл %s удалён (все строки обработаны)", filePaths[0])
+		} else {
+			os.WriteFile(filePaths[0], []byte(strings.Join(newLines, "\n")), 0644)
+			log.Printf("💾 Авто-разделение: CSV файл %s обновлён, осталось %d строк", filePaths[0], len(newLines))
+		}
+	}
+
+	return nil
+}
+
+// autoSplitOrder - автоматически разделяет заказ
+func autoSplitOrder(cabinetKey string, order *models.OrderState) error {
+	cabinet := config.GetActiveConfig()
+	if cabinet == nil {
+		return fmt.Errorf("активный кабинет не найден")
+	}
+
+	log.Printf("🚀 Авто-разделение: разделение заказа %s", order.PostingNumber)
+
+	// Формируем данные для разделения
+	var products []struct {
+		ProductID int64
+		OfferID   string
+		Quantity  int
+	}
+
+	for _, product := range order.Products {
+		if product.IsReadyForShipment() {
+			productID := product.ProductID
+			if productID == 0 {
+				productID = product.SKU
+			}
+			if productID == 0 {
+				log.Printf("⚠️ Авто-разделение: не удалось определить product_id для товара %s", product.OfferID)
+				continue
+			}
+			products = append(products, struct {
+				ProductID int64
+				OfferID   string
+				Quantity  int
+			}{
+				ProductID: productID,
+				OfferID:   product.OfferID,
+				Quantity:  product.Quantity,
+			})
+		}
+	}
+
+	if len(products) == 0 {
+		return fmt.Errorf("нет товаров для отправки")
+	}
+
+	// Используем общую функцию разделения
+	ordersToShip := []struct {
+		PostingNumber string
+		Products      []struct {
+			ProductID int64
+			OfferID   string
+			Quantity  int
+		}
+	}{
+		{
+			PostingNumber: order.PostingNumber,
+			Products:      products,
+		},
+	}
+
+	results, err := ShipOrdersInternal(cabinet, ordersToShip, true) // wakeWorker = true
+	if err != nil {
+		return err
+	}
+
+	if len(results) == 0 {
+		return fmt.Errorf("не получен результат разделения")
+	}
+
+	if results[0]["status"] == "error" {
+		return fmt.Errorf("ошибка разделения: %s", results[0]["error"])
+	}
+
+	log.Printf("✅ Авто-разделение: заказ %s разделён успешно", order.PostingNumber)
+	return nil
+}
+
 // convertProducts - конвертирует продукты из API в состояние
 func convertProducts(products []models.Product) []models.ProductState {
 	result := make([]models.ProductState, 0)
@@ -636,310 +981,4 @@ func convertProducts(products []models.Product) []models.ProductState {
 		})
 	}
 	return result
-}
-
-// processReadyForSplitOrders - обрабатывает заказы с is_ready_for_split = true
-func processReadyForSplitOrders() error {
-	cabinet := config.GetActiveConfig()
-	if cabinet == nil {
-		return fmt.Errorf("активный кабинет не найден")
-	}
-
-	state, err := LoadCabinetState(cabinet.Key)
-	if err != nil {
-		return err
-	}
-
-	processed := 0
-	for i := range state.Orders {
-		order := &state.Orders[i]
-
-		// Проверяем: готов к разделению, но еще не разделен
-		if !order.IsReadyForSplit || order.IsDivided {
-			continue
-		}
-
-		log.Printf("🔄 Авто-разделение: обработка заказа %s", order.PostingNumber)
-
-		// Проверяем, нужна ли маркировка для товаров
-		needsMarking := false
-		for _, product := range order.Products {
-			if product.Requirements.IsMandatoryMarked || product.Requirements.IsGtdRequired {
-				needsMarking = true
-				break
-			}
-		}
-
-		// Если маркировка не нужна - сразу разделяем
-		if !needsMarking {
-			if err := autoSplitOrder(cabinet.Key, order); err != nil {
-				log.Printf("❌ Авто-разделение: ошибка разделения заказа %s: %v", order.PostingNumber, err)
-				continue
-			}
-			processed++
-			continue
-		}
-
-		// Если маркировка нужна - ищем CSV файл
-		if err := processMarkingForOrder(cabinet.Key, order); err != nil {
-			log.Printf("⚠️ Авто-разделение: ошибка обработки маркировки для заказа %s: %v", order.PostingNumber, err)
-			continue
-		}
-
-		// Проверяем, все ли маркировки добавлены
-		allMarkingCompleted := true
-		for _, product := range order.Products {
-			if (product.Requirements.IsMandatoryMarked || product.Requirements.IsGtdRequired) && !product.Marking.IsCompleted {
-				allMarkingCompleted = false
-				break
-			}
-		}
-
-		if allMarkingCompleted {
-			// Все маркировки добавлены - разделяем
-			if err := autoSplitOrder(cabinet.Key, order); err != nil {
-				log.Printf("❌ Авто-разделение: ошибка разделения заказа %s: %v", order.PostingNumber, err)
-				continue
-			}
-			processed++
-		} else {
-			log.Printf("⏳ Авто-разделение: заказ %s ожидает маркировки", order.PostingNumber)
-		}
-	}
-
-	if processed > 0 {
-		log.Printf("✅ Авто-разделение: обработано %d заказов", processed)
-		return SaveCabinetState(state)
-	}
-	return nil
-}
-
-// processMarkingForOrder - обрабатывает маркировку для заказа из CSV файла
-func processMarkingForOrder(cabinetKey string, order *models.OrderState) error {
-	labelsPath := config.GetLabelsPathForCabinet(cabinetKey)
-	folderName := order.GetFolderName()
-	folderPath := filepath.Join(labelsPath, folderName)
-
-	// Ищем CSV файлы в папке заказа
-	files, err := os.ReadDir(folderPath)
-	if err != nil {
-		return nil // папки нет - пропускаем
-	}
-
-	var csvFiles []string
-	for _, f := range files {
-		if !f.IsDir() && strings.HasSuffix(strings.ToLower(f.Name()), ".csv") {
-			csvFiles = append(csvFiles, filepath.Join(folderPath, f.Name()))
-		}
-	}
-
-	if len(csvFiles) == 0 {
-		return nil // нет CSV файлов
-	}
-
-	log.Printf("📄 Авто-разделение: найдено %d CSV файлов для заказа %s", len(csvFiles), order.PostingNumber)
-
-	// Читаем все CSV файлы
-	type MarkItem struct {
-		OrderNumber string
-		OfferID     string
-		Code        string
-	}
-	var allItems []MarkItem
-	var allLines []string
-
-	for _, csvPath := range csvFiles {
-		file, err := os.Open(csvPath)
-		if err != nil {
-			continue
-		}
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
-				continue
-			}
-			allLines = append(allLines, line)
-			parts := strings.Fields(line)
-			if len(parts) >= 3 {
-				allItems = append(allItems, MarkItem{
-					OrderNumber: parts[0],
-					OfferID:     parts[1],
-					Code:        parts[2],
-				})
-			}
-		}
-		file.Close()
-	}
-
-	if len(allItems) == 0 {
-		return nil
-	}
-
-	// Фильтруем строки для нашего заказа
-	prefix := order.GetFolderName()
-	var validItems []MarkItem
-	var linesToRemove []int
-
-	for idx, item := range allItems {
-		itemPrefix := getOrderPrefix(item.OrderNumber)
-		if itemPrefix == prefix {
-			validItems = append(validItems, item)
-			linesToRemove = append(linesToRemove, idx)
-		}
-	}
-
-	if len(validItems) == 0 {
-		log.Printf("ℹ️ Авто-разделение: нет строк для заказа %s в CSV", order.PostingNumber)
-		return nil
-	}
-
-	log.Printf("📦 Авто-разделение: найдено %d маркировок для заказа %s", len(validItems), order.PostingNumber)
-
-	// Группируем по OfferID
-	marksByOffer := make(map[string][]string)
-	for _, item := range validItems {
-		marksByOffer[item.OfferID] = append(marksByOffer[item.OfferID], item.Code)
-	}
-
-	// Добавляем маркировки к товарам
-	cabinet := config.GetActiveConfig()
-	allMarkingAdded := true
-
-	for offerID, codes := range marksByOffer {
-		for j := range order.Products {
-			product := &order.Products[j]
-			if product.OfferID == offerID && (product.Requirements.IsMandatoryMarked || product.Requirements.IsGtdRequired) {
-				if len(codes) >= product.Quantity {
-					// Добавляем маркировку
-					if err := AddMarkingsForOrder(cabinet, order.PostingNumber, product.ProductID, product.Quantity, codes[:product.Quantity]); err != nil {
-						log.Printf("❌ Авто-разделение: ошибка добавления маркировки для товара %s: %v", offerID, err)
-						allMarkingAdded = false
-					} else {
-						product.Marking.IsCompleted = true
-						product.Requirements.IsMandatoryMarked = false
-						product.Requirements.IsGtdRequired = false
-						log.Printf("✅ Авто-разделение: добавлена маркировка для товара %s (%d кодов)", offerID, product.Quantity)
-					}
-				} else {
-					log.Printf("⚠️ Авто-разделение: недостаточно марок для товара %s: нужно %d, есть %d", offerID, product.Quantity, len(codes))
-					allMarkingAdded = false
-				}
-				break
-			}
-		}
-	}
-
-	if !allMarkingAdded {
-		return fmt.Errorf("не все маркировки добавлены для заказа %s", order.PostingNumber)
-	}
-
-	// Удаляем использованные строки из CSV
-	if len(linesToRemove) > 0 {
-		var newLines []string
-		for i, line := range allLines {
-			shouldRemove := false
-			for _, idx := range linesToRemove {
-				if i == idx {
-					shouldRemove = true
-					break
-				}
-			}
-			if !shouldRemove {
-				newLines = append(newLines, line)
-			}
-		}
-
-		// Перезаписываем первый CSV файл (удаляем использованные строки)
-		if len(csvFiles) > 0 {
-			if len(newLines) == 0 {
-				os.Remove(csvFiles[0])
-				log.Printf("🗑️ Авто-разделение: CSV файл %s удалён (все строки обработаны)", csvFiles[0])
-			} else {
-				os.WriteFile(csvFiles[0], []byte(strings.Join(newLines, "\n")), 0644)
-				log.Printf("💾 Авто-разделение: CSV файл %s обновлён, осталось %d строк", csvFiles[0], len(newLines))
-			}
-		}
-	}
-
-	return nil
-}
-
-// getOrderPrefix - возвращает префикс заказа (без хвостика)
-func getOrderPrefix(orderNumber string) string {
-	parts := strings.Split(orderNumber, "-")
-	if len(parts) > 1 {
-		return strings.Join(parts[:len(parts)-1], "-")
-	}
-	return orderNumber
-}
-
-// autoSplitOrder - автоматически разделяет заказ
-func autoSplitOrder(cabinetKey string, order *models.OrderState) error {
-	cabinet := config.GetActiveConfig()
-	if cabinet == nil {
-		return fmt.Errorf("активный кабинет не найден")
-	}
-
-	log.Printf("🚀 Авто-разделение: разделение заказа %s", order.PostingNumber)
-
-	// Получаем актуальные продукты для разделения
-	var productsToShip []struct {
-		ProductID int64
-		Quantity  int
-	}
-	for _, product := range order.Products {
-		if product.IsReadyForShipment() {
-			productsToShip = append(productsToShip, struct {
-				ProductID int64
-				Quantity  int
-			}{
-				ProductID: product.ProductID,
-				Quantity:  product.Quantity,
-			})
-		}
-	}
-
-	if len(productsToShip) == 0 {
-		return fmt.Errorf("нет товаров для отправки")
-	}
-
-	// Формируем упаковки (поштучно)
-	packages := make([]models.ShipPackage, 0)
-	productIDs := make([]int64, 0)
-	for _, p := range productsToShip {
-		productIDs = append(productIDs, p.ProductID)
-		for i := 0; i < p.Quantity; i++ {
-			packages = append(packages, models.ShipPackage{
-				Products: []models.ShipProduct{
-					{
-						ProductID: p.ProductID,
-						Quantity:  1,
-					},
-				},
-			})
-		}
-	}
-
-	if len(packages) == 0 {
-		return fmt.Errorf("нет товаров для отправки")
-	}
-
-	// Выполняем разделение
-	shipments, err := ShipOrder(cabinet, order.PostingNumber, packages)
-	if err != nil {
-		return fmt.Errorf("ошибка разделения: %w", err)
-	}
-
-	log.Printf("✅ Авто-разделение: заказ %s разделён на %d отправлений", order.PostingNumber, len(shipments))
-
-	// Обновляем состояние
-	if err := UpdateOrderAfterShip(cabinetKey, order.PostingNumber, shipments, productIDs, 1); err != nil {
-		return fmt.Errorf("ошибка обновления состояния: %w", err)
-	}
-
-	// Пробуждаем воркер заказа этикеток
-	WakeLabelWorker()
-
-	return nil
 }

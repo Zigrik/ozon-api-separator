@@ -1,0 +1,125 @@
+package services
+
+import (
+	"fmt"
+	"log"
+
+	"ozon-api-separator/internal/models"
+)
+
+// ShipOrdersInternal - внутренняя функция для разделения заказов
+// Используется как ручным режимом, так и авто-режимом
+func ShipOrdersInternal(cabinet *models.CabinetConfig, ordersToShip []struct {
+	PostingNumber string
+	Products      []struct {
+		ProductID int64
+		OfferID   string
+		Quantity  int
+	}
+}, wakeWorker bool) ([]map[string]interface{}, error) {
+	results := make([]map[string]interface{}, 0)
+
+	// Получаем актуальные заказы для исправления product_id
+	orders, err := GetAwaitingPackagingOrders(cabinet)
+	if err != nil {
+		log.Printf("⚠️ Ошибка получения заказов для исправления product_id: %v", err)
+	}
+	ordersMap := make(map[string][]models.Product)
+	for _, order := range orders {
+		ordersMap[order.PostingNumber] = order.Products
+	}
+
+	for _, orderReq := range ordersToShip {
+		result := map[string]interface{}{
+			"posting_number": orderReq.PostingNumber,
+		}
+
+		packages := make([]models.ShipPackage, 0)
+		productIDs := make([]int64, 0)
+
+		for _, product := range orderReq.Products {
+			productID := product.ProductID
+
+			if productID == 0 {
+				if products, exists := ordersMap[orderReq.PostingNumber]; exists {
+					for _, p := range products {
+						if p.OfferID == product.OfferID {
+							productID = p.ProductID
+							if productID == 0 {
+								productID = p.SKU
+							}
+							break
+						}
+					}
+					if productID == 0 && product.OfferID == "" {
+						for _, p := range products {
+							if p.SKU == product.ProductID {
+								productID = p.ProductID
+								if productID == 0 {
+									productID = p.SKU
+								}
+								break
+							}
+						}
+					}
+				}
+				if productID == 0 {
+					log.Printf("❌ Не удалось исправить ProductID=0 для заказа %s (offer_id=%s)", orderReq.PostingNumber, product.OfferID)
+					result["status"] = "error"
+					result["error"] = fmt.Sprintf("Не удалось определить товар для заказа %s", orderReq.PostingNumber)
+					results = append(results, result)
+					continue
+				} else {
+					log.Printf("⚠️ ProductID был 0, исправлен на %d для заказа %s (offer_id=%s)", productID, orderReq.PostingNumber, product.OfferID)
+				}
+			}
+
+			productIDs = append(productIDs, productID)
+			for i := 0; i < product.Quantity; i++ {
+				packages = append(packages, models.ShipPackage{
+					Products: []models.ShipProduct{
+						{
+							ProductID: productID,
+							Quantity:  1,
+						},
+					},
+				})
+			}
+		}
+
+		if len(packages) == 0 {
+			result["status"] = "error"
+			result["error"] = "Нет товаров для отправки"
+			results = append(results, result)
+			continue
+		}
+
+		shipments, err := ShipOrder(cabinet, orderReq.PostingNumber, packages)
+		if err != nil {
+			log.Printf("❌ Ошибка разделения заказа %s: %v", orderReq.PostingNumber, err)
+			result["status"] = "error"
+			result["error"] = err.Error()
+			results = append(results, result)
+			continue
+		}
+
+		log.Printf("✅ Заказ %s разделён на %d отправлений", orderReq.PostingNumber, len(shipments))
+
+		if err := UpdateOrderAfterShip(cabinet.Key, orderReq.PostingNumber, shipments, productIDs, 1); err != nil {
+			log.Printf("⚠️ Ошибка сохранения состояния после разделения: %v", err)
+		}
+
+		if wakeWorker {
+			WakeLabelWorker()
+			log.Printf("🔔 Пробужден воркер заказа этикеток для заказа %s", orderReq.PostingNumber)
+		}
+
+		result["status"] = "success"
+		result["shipments"] = shipments
+		result["message"] = fmt.Sprintf("Заказ разделён на %d отправлений", len(shipments))
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
