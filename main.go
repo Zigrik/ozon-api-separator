@@ -32,13 +32,18 @@ func getLocalIP() string {
 }
 
 func runApp() {
+	// Инициализируем логгер
+	if err := services.InitLogger(); err != nil {
+		log.Printf("[WARNING] Ошибка инициализации логгера: %v", err)
+	}
+	defer services.CloseLogger()
+
 	if err := config.LoadConfig(); err != nil {
-		log.Fatalf("❌ Ошибка конфигурации: %v", err)
+		log.Fatalf("[ERROR] Ошибка конфигурации: %v", err)
 	}
 
-	// Загружаем коды маркировки из файла
 	if err := config.LoadMarkingCodes(); err != nil {
-		log.Printf("⚠️ Ошибка загрузки кодов маркировки: %v", err)
+		log.Printf("[WARNING] Ошибка загрузки кодов маркировки: %v", err)
 	}
 
 	os.MkdirAll("templates", 0755)
@@ -69,29 +74,24 @@ func runApp() {
 	http.HandleFunc("/api/orders/state", middleware.AuthMiddleware(handlers.HandleGetOrderState))
 	http.HandleFunc("/api/orders/stats", middleware.AuthMiddleware(handlers.HandleGetStats))
 
-	// API для страны, ГТД и маркировки
 	http.HandleFunc("/api/countries/list", middleware.AuthMiddleware(handlers.HandleGetCountries))
 	http.HandleFunc("/api/countries/set", middleware.AuthMiddleware(handlers.HandleSetCountry))
 	http.HandleFunc("/api/gtd/absent", middleware.AuthMiddleware(handlers.HandleSetGTDAbsent))
 
-	// API для кодов маркировки
 	http.HandleFunc("/api/codes/available", middleware.AuthMiddleware(handlers.HandleGetAvailableCodes))
 	http.HandleFunc("/api/codes/get", middleware.AuthMiddleware(handlers.HandleGetCodes))
 	http.HandleFunc("/api/codes/reload", middleware.AuthMiddleware(handlers.HandleReloadCodes))
 	http.HandleFunc("/api/markings/add", middleware.AuthMiddleware(handlers.HandleAddMarkings))
 
-	// API для этикеток
 	http.HandleFunc("/api/labels/create", middleware.AuthMiddleware(handlers.HandleCreateLabels))
 	http.HandleFunc("/api/labels/status", middleware.AuthMiddleware(handlers.HandleGetLabelStatus))
 	http.HandleFunc("/api/labels/download", middleware.AuthMiddleware(handlers.HandleDownloadLabel))
 	http.HandleFunc("/api/labels/trigger-order", middleware.AuthMiddleware(handlers.HandleTriggerOrderLabels))
 	http.HandleFunc("/api/labels/trigger-download", middleware.AuthMiddleware(handlers.HandleTriggerDownloadLabels))
 
-	// API для авто-режима
 	http.HandleFunc("/api/auto-mode/global", middleware.AuthMiddleware(handlers.HandleGlobalAutoMode))
 	http.HandleFunc("/api/auto-mode/global-status", middleware.AuthMiddleware(handlers.HandleGlobalAutoModeStatus))
 
-	// Настройки
 	http.HandleFunc("/api/settings", handlers.HandleGetSettings)
 
 	port := os.Getenv("PORT")
@@ -103,8 +103,8 @@ func runApp() {
 	}
 
 	localIP := getLocalIP()
-	log.Printf("🚀 Сервер запущен на http://%s:%s (http://localhost:%s)", localIP, port, port)
-	log.Printf("📋 Доступные эндпоинты:")
+	log.Printf("[INFO] Сервер запущен на http://%s:%s (http://localhost:%s)", localIP, port, port)
+	log.Printf("[INFO] Доступные эндпоинты:")
 	log.Printf("   GET  / - веб-интерфейс")
 	log.Printf("   POST /api/check-password - проверка пароля")
 	log.Printf("   POST /api/cabinet/switch - переключение кабинета")
@@ -135,10 +135,9 @@ func main() {
 	)
 
 	if !result.Valid {
-		//log.Fatalf("❌ Ошибка лицензии: %s", result.Error)
-		log.Printf("✅ Лицензирнная заглушка")
+		log.Printf("[INFO] Лицензионная заглушка")
 	}
 
-	log.Printf("✅ Лицензия активна. Компания: %s", result.Company)
+	log.Printf("[INFO] Лицензия активна. Компания: %s", result.Company)
 	runApp()
 }

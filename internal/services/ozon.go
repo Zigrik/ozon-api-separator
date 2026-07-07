@@ -208,7 +208,6 @@ func GetLabelByTaskID(cab *models.CabinetConfig, taskID int64) ([]byte, error) {
 		return nil, fmt.Errorf("URL для скачивания этикетки пуст")
 	}
 
-	// Скачиваем PDF по URL
 	pdfResp, err := http.Get(response.Result.FileURL)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка скачивания PDF: %w", err)
@@ -339,7 +338,7 @@ func SetCountry(cab *models.CabinetConfig, postingNumber string, productID int64
 	}
 
 	if err := UpdateCountryStatus(cab.Key, postingNumber, productID, countryCode); err != nil {
-		log.Printf("⚠️ Ошибка обновления состояния страны: %v", err)
+		log.Printf("[WARNING] Ошибка обновления состояния страны: %v", err)
 	}
 
 	return nil
@@ -359,14 +358,6 @@ func GetExemplarIDs(cab *models.CabinetConfig, postingNumber string) (*models.Ex
 	var resp models.ExemplarCreateResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
-	}
-
-	log.Printf("📦 Ответ /v6/fbs/posting/product/exemplar/create-or-get для заказа %s:", postingNumber)
-	for _, p := range resp.Products {
-		log.Printf("  ProductID: %d, exemplars: %d", p.ProductID, len(p.Exemplars))
-		for _, e := range p.Exemplars {
-			log.Printf("    ExemplarID: %d", e.ExemplarID)
-		}
 	}
 
 	return &resp, nil
@@ -431,7 +422,7 @@ func SetGTDAsAbsent(cab *models.CabinetConfig, postingNumber string, productID i
 	}
 
 	if err := UpdateGTDStatus(cab.Key, postingNumber, productID); err != nil {
-		log.Printf("⚠️ Ошибка обновления состояния ГТД: %v", err)
+		log.Printf("[WARNING] Ошибка обновления состояния ГТД: %v", err)
 	}
 
 	return nil
@@ -440,7 +431,6 @@ func SetGTDAsAbsent(cab *models.CabinetConfig, postingNumber string, productID i
 // ============ ФУНКЦИИ ДЛЯ МАРКИРОВКИ ============
 
 // CheckMarkingStatus - проверяет статус маркировки для заказа
-// Возвращает map[product_id]bool, где true = маркировка добавлена и валидна
 func CheckMarkingStatus(cab *models.CabinetConfig, postingNumber string) (map[int64]bool, error) {
 	url := "https://api-seller.ozon.ru/v5/fbs/posting/product/exemplar/status"
 
@@ -448,21 +438,15 @@ func CheckMarkingStatus(cab *models.CabinetConfig, postingNumber string) (map[in
 		PostingNumber: postingNumber,
 	}
 
-	log.Printf("📤 Запрос к /v5/fbs/posting/product/exemplar/status для заказа %s", postingNumber)
-
 	respBody, err := MakeOzonRequest(cab, "POST", url, req)
 	if err != nil {
-		log.Printf("❌ Ошибка запроса: %v", err)
 		return nil, err
 	}
 
 	var response models.ExemplarStatusResponse
 	if err := json.Unmarshal(respBody, &response); err != nil {
-		log.Printf("❌ Ошибка парсинга ответа: %v", err)
 		return nil, fmt.Errorf("ошибка парсинга ответа: %w", err)
 	}
-
-	log.Printf("📊 Статус маркировки для заказа %s: %s", postingNumber, response.Status)
 
 	result := make(map[int64]bool)
 	for _, product := range response.Products {
@@ -472,14 +456,13 @@ func CheckMarkingStatus(cab *models.CabinetConfig, postingNumber string) (map[in
 			if len(exemplar.Marks) > 0 {
 				allValid := true
 				for _, mark := range exemplar.Marks {
-					// Проверяем, что маркировка прошла проверку
 					if mark.CheckStatus != "passed" && mark.CheckStatus != "valid" {
 						allValid = false
-						log.Printf("   ⚠️ Маркировка невалидна: CheckStatus=%s", mark.CheckStatus)
+						break
 					}
 					if len(mark.ErrorCodes) > 0 {
 						allValid = false
-						log.Printf("   ⚠️ Ошибки маркировки: %v", mark.ErrorCodes)
+						break
 					}
 				}
 				if allValid {
@@ -488,9 +471,7 @@ func CheckMarkingStatus(cab *models.CabinetConfig, postingNumber string) (map[in
 			}
 		}
 
-		// Маркировка считается добавленной, если есть хоть одна валидная марка
 		result[product.ProductID] = hasValidMarks
-		log.Printf("   Товар %d: hasValidMarks=%v", product.ProductID, hasValidMarks)
 	}
 
 	return result, nil
@@ -498,8 +479,6 @@ func CheckMarkingStatus(cab *models.CabinetConfig, postingNumber string) (map[in
 
 // AddMarkingsForOrder - добавляет маркировку для товара
 func AddMarkingsForOrder(cab *models.CabinetConfig, postingNumber string, productID int64, quantity int, codes []string) error {
-	log.Printf("🏷️ AddMarkingsForOrder: posting=%s, product_id=%d, quantity=%d", postingNumber, productID, quantity)
-
 	exemplars, err := GetExemplarIDs(cab, postingNumber)
 	if err != nil {
 		return fmt.Errorf("ошибка получения exemplar_id: %w", err)
@@ -521,7 +500,6 @@ func AddMarkingsForOrder(cab *models.CabinetConfig, postingNumber string, produc
 
 	actualQuantity := len(ids)
 	if actualQuantity < quantity {
-		log.Printf("⚠️ Уменьшено количество маркировок с %d до %d (доступно exemplar_id)", quantity, actualQuantity)
 		if len(codes) > actualQuantity {
 			codes = codes[:actualQuantity]
 		}
@@ -573,17 +551,14 @@ func AddMarkingsForOrder(cab *models.CabinetConfig, postingNumber string, produc
 		})
 	}
 
-	log.Printf("📤 Отправка запроса на добавление маркировки: %d exemplars", len(request.Products[0].Exemplars))
-
 	_, err = MakeOzonRequest(cab, "POST", "https://api-seller.ozon.ru/v6/fbs/posting/product/exemplar/set", request)
 	if err != nil {
 		return err
 	}
 
 	if err := UpdateMarkingStatus(cab.Key, postingNumber, productID, codes[:quantity]); err != nil {
-		log.Printf("⚠️ Ошибка обновления состояния маркировки: %v", err)
+		log.Printf("[WARNING] Ошибка обновления состояния маркировки: %v", err)
 	}
 
-	log.Printf("✅ Маркировка добавлена для %d экземпляров товара %d", quantity, productID)
 	return nil
 }
