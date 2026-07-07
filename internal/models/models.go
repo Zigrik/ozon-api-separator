@@ -9,13 +9,13 @@ import (
 // ============ КОНФИГУРАЦИЯ ============
 
 type CabinetConfig struct {
-	Name     string
-	ClientID string
-	APIKey   string
-	Key      string
-	DataPath string
-	Color    string
-	BgColor  string
+	Name       string
+	ClientID   string
+	APIKey     string
+	Key        string
+	LabelsPath string // Путь для этикеток и .txt файлов (уникальный для каждого кабинета)
+	Color      string
+	BgColor    string
 }
 
 type AppConfig struct {
@@ -234,12 +234,10 @@ type ExemplarCreateResponse struct {
 
 // ============ МОДЕЛИ ДЛЯ СТАТУСА МАРКИРОВКИ ============
 
-// ExemplarStatusRequest - запрос на получение статуса маркировки
 type ExemplarStatusRequest struct {
 	PostingNumber string `json:"posting_number"`
 }
 
-// ExemplarStatusResponse - ответ на запрос статуса маркировки
 type ExemplarStatusResponse struct {
 	PostingNumber string `json:"posting_number"`
 	Status        string `json:"status"`

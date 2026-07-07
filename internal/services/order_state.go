@@ -18,7 +18,7 @@ import (
 
 var stateMutex sync.Mutex
 
-// GetOrdersFilePath - возвращает путь к файлу состояния для конкретного кабинета
+// GetOrdersFilePath - возвращает путь к файлу состояния
 func GetOrdersFilePath(cabinetKey string) string {
 	ordersPath := config.GetOrdersPath()
 	os.MkdirAll(ordersPath, 0755)

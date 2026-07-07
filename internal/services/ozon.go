@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"ozon-api-separator/internal/config"
 	"ozon-api-separator/internal/models"
 )
 
@@ -245,9 +246,10 @@ func GetLabelByTaskIDWithRetry(cab *models.CabinetConfig, taskID int64, maxRetri
 
 // SaveLabelToFile - сохраняет PDF этикетки в файл
 func SaveLabelToFile(cab *models.CabinetConfig, postingNumber string, pdfData []byte) (string, error) {
-	dataPath := cab.DataPath
-	if dataPath == "" {
-		dataPath = filepath.Join("data", cab.Key)
+	// Используем LabelsPath из конфига кабинета
+	labelsPath := cab.LabelsPath
+	if labelsPath == "" {
+		labelsPath = config.GetLabelsPathForCabinet(cab.Key)
 	}
 
 	parts := strings.Split(postingNumber, "-")
@@ -256,7 +258,7 @@ func SaveLabelToFile(cab *models.CabinetConfig, postingNumber string, pdfData []
 		folderName = postingNumber
 	}
 
-	folderPath := filepath.Join(dataPath, folderName)
+	folderPath := filepath.Join(labelsPath, folderName)
 	if err := os.MkdirAll(folderPath, 0755); err != nil {
 		return "", fmt.Errorf("ошибка создания папки: %w", err)
 	}

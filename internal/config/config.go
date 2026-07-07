@@ -30,31 +30,31 @@ var (
 	CSVWorkerRunningMap  = make(map[string]bool)
 	CSVWorkersMutex      sync.Mutex
 
-	// Глобальные пути (экспортируемые, с большой буквы)
-	LabelsPath string // Единый путь для labels (признак готовности + сохранение этикеток)
-	OrdersPath string // Путь для состояния заказов
-	LogsPath   string // Путь для логов
+	// Глобальные пути
+	GlobalLabelsPath string
+	GlobalOrdersPath string
+	GlobalLogsPath   string
 )
 
 func LoadConfig() error {
 	if err := godotenv.Load(); err != nil {
-		log.Println("⚠️ Предупреждение: .env не найден, используются переменные окружения")
+		log.Println("[WARNING] .env не найден, используются переменные окружения")
 	}
 
-	// Загружаем пути
-	LabelsPath = getPath("LABELS_PATH", "labels")
-	OrdersPath = getPath("ORDERS_PATH", "orders")
-	LogsPath = getPath("LOGS_PATH", "logs")
+	// Загружаем глобальные пути
+	GlobalLabelsPath = getPath("LABELS_PATH", "labels")
+	GlobalOrdersPath = getPath("ORDERS_PATH", "orders")
+	GlobalLogsPath = getPath("LOGS_PATH", "logs")
 
-	log.Printf("📁 Пути загружены из .env:")
-	log.Printf("   labels (признак готовности + этикетки): %s", LabelsPath)
-	log.Printf("   состояние заказов: %s", OrdersPath)
-	log.Printf("   логи: %s", LogsPath)
+	log.Printf("[INFO] Глобальные пути:")
+	log.Printf("   labels: %s", GlobalLabelsPath)
+	log.Printf("   orders: %s", GlobalOrdersPath)
+	log.Printf("   logs: %s", GlobalLogsPath)
 
-	// Создаем папки
-	os.MkdirAll(LabelsPath, 0755)
-	os.MkdirAll(OrdersPath, 0755)
-	os.MkdirAll(LogsPath, 0755)
+	// Создаем глобальные папки
+	os.MkdirAll(GlobalLabelsPath, 0755)
+	os.MkdirAll(GlobalOrdersPath, 0755)
+	os.MkdirAll(GlobalLogsPath, 0755)
 
 	pwd := os.Getenv("APP_PASSWORD")
 	if pwd == "" {
@@ -64,8 +64,12 @@ func LoadConfig() error {
 	AppConfig = &models.AppConfig{
 		Password:      pwd,
 		Cabinets:      make(map[string]*models.CabinetConfig),
-		ActiveCabinet: "shinorama",
+		ActiveCabinet: os.Getenv("ACTIVE_CABINET"),
 		AuthToken:     os.Getenv("AUTH_TOKEN"),
+	}
+
+	if AppConfig.ActiveCabinet == "" {
+		AppConfig.ActiveCabinet = "shinorama"
 	}
 
 	cabinets := map[string]struct {
@@ -84,26 +88,31 @@ func LoadConfig() error {
 		clientID := os.Getenv(envKey + "_CLIENT_ID")
 		apiKey := os.Getenv(envKey + "_API_KEY")
 
-		// Путь для сохранения этикеток для конкретного кабинета (внутри LabelsPath)
-		cabinetLabelsPath := filepath.Join(LabelsPath, key)
-		os.MkdirAll(cabinetLabelsPath, 0755)
+		// Получаем путь для labels кабинета (если не указан - используем глобальный)
+		labelsPath := getCabinetLabelsPath(key, GlobalLabelsPath)
+
+		// Создаем папку для кабинета
+		os.MkdirAll(labelsPath, 0755)
+
+		log.Printf("[INFO] Кабинет '%s':", cab.Name)
+		log.Printf("   labels: %s", labelsPath)
 
 		AppConfig.Cabinets[key] = &models.CabinetConfig{
-			Name:     cab.Name,
-			ClientID: clientID,
-			APIKey:   apiKey,
-			Key:      key,
-			DataPath: cabinetLabelsPath,
-			Color:    cab.Color,
-			BgColor:  cab.BgColor,
+			Name:       cab.Name,
+			ClientID:   clientID,
+			APIKey:     apiKey,
+			Key:        key,
+			LabelsPath: labelsPath,
+			Color:      cab.Color,
+			BgColor:    cab.BgColor,
 		}
 
 		if clientID == "" || apiKey == "" {
-			log.Printf("⚠️ Кабинет '%s' не настроен (отсутствуют CLIENT_ID или API_KEY)", cab.Name)
+			log.Printf("[WARNING] Кабинет '%s' не настроен (отсутствуют CLIENT_ID или API_KEY)", cab.Name)
 		}
 	}
 
-	log.Printf("✅ Конфигурация загружена. Доступно кабинетов: %d", len(AppConfig.Cabinets))
+	log.Printf("[INFO] Конфигурация загружена. Доступно кабинетов: %d", len(AppConfig.Cabinets))
 	return nil
 }
 
@@ -113,46 +122,44 @@ func getPath(envKey, defaultPath string) string {
 	if path == "" {
 		path = defaultPath
 	}
-	// Если путь абсолютный — не изменяем
-	if filepath.IsAbs(path) {
-		return path
+	return path
+}
+
+// getCabinetLabelsPath - возвращает путь для labels кабинета
+func getCabinetLabelsPath(cabinetKey, defaultPath string) string {
+	envKey := strings.ToUpper(cabinetKey) + "_LABELS_PATH"
+	path := os.Getenv(envKey)
+	if path == "" {
+		path = filepath.Join(defaultPath, cabinetKey)
 	}
-	// Иначе возвращаем как есть (относительный путь)
 	return path
 }
 
 // GetLabelsPathForCabinet - возвращает путь к папке labels для конкретного кабинета
 func GetLabelsPathForCabinet(cabinetKey string) string {
-	return filepath.Join(LabelsPath, cabinetKey)
-}
-
-// GetLabelsSavePathForCabinet - возвращает путь для сохранения этикеток для кабинета
-func GetLabelsSavePathForCabinet(cabinetKey string) string {
-	if cab, ok := AppConfig.Cabinets[cabinetKey]; ok && cab.DataPath != "" {
-		return cab.DataPath
+	if cab, ok := AppConfig.Cabinets[cabinetKey]; ok && cab.LabelsPath != "" {
+		return cab.LabelsPath
 	}
-	return filepath.Join(LabelsPath, cabinetKey)
+	return filepath.Join(GlobalLabelsPath, cabinetKey)
 }
 
-// GetOrdersPath - возвращает путь для файлов состояния
+// GetOrdersPath - возвращает глобальный путь для файлов состояния
 func GetOrdersPath() string {
-	return OrdersPath
+	return GlobalOrdersPath
 }
 
-// GetLogsPath - возвращает путь для логов
+// GetLogsPath - возвращает глобальный путь для логов
 func GetLogsPath() string {
-	return LogsPath
+	return GlobalLogsPath
+}
+
+// GetDataPathForCabinet - возвращает путь для сохранения этикеток для кабинета
+func GetDataPathForCabinet(cabinetKey string) string {
+	return GetLabelsPathForCabinet(cabinetKey)
 }
 
 func GetActiveConfig() *models.CabinetConfig {
 	return AppConfig.Cabinets[AppConfig.ActiveCabinet]
-}
-
-func GetDataPathForCabinet(cabinetKey string) string {
-	if cab, ok := AppConfig.Cabinets[cabinetKey]; ok && cab.DataPath != "" {
-		return cab.DataPath
-	}
-	return filepath.Join(LabelsPath, cabinetKey)
 }
 
 func SetAutoModeForCabinet(cabinetKey string, enabled bool) {
@@ -187,14 +194,14 @@ func LoadAutoModeSettings() {
 }
 
 func LoadMarkingCodes() error {
-	log.Println("📂 loadMarkingCodes: начало загрузки")
+	log.Println("[INFO] loadMarkingCodes: начало загрузки")
 	CodesMutex.Lock()
 	defer CodesMutex.Unlock()
 
 	file, err := os.Open("GTINs.txt")
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Println("⚠️ loadMarkingCodes: файл GTINs.txt не найден")
+			log.Println("[WARNING] loadMarkingCodes: файл GTINs.txt не найден")
 			return nil
 		}
 		return err
@@ -209,7 +216,7 @@ func LoadMarkingCodes() error {
 			MarkingCodes = append(MarkingCodes, code)
 		}
 	}
-	log.Printf("✅ loadMarkingCodes: загружено %d кодов маркировки", len(MarkingCodes))
+	log.Printf("[INFO] loadMarkingCodes: загружено %d кодов маркировки", len(MarkingCodes))
 	return scanner.Err()
 }
 
@@ -228,7 +235,7 @@ func SaveMarkingCodes() error {
 }
 
 func GetMarkingCodes(count int) ([]string, error) {
-	log.Printf("📦 Запрос %d кодов маркировки", count)
+	log.Printf("[INFO] Запрос %d кодов маркировки", count)
 	CodesMutex.Lock()
 	defer CodesMutex.Unlock()
 	if len(MarkingCodes) < count {

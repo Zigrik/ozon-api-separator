@@ -35,7 +35,6 @@ func InitLogger() error {
 			return
 		}
 
-		// Пишем и в консоль, и в файл
 		multiWriter := io.MultiWriter(os.Stdout, logFile)
 		logger = log.New(multiWriter, "", log.LstdFlags)
 	})
@@ -73,7 +72,7 @@ func LogError(format string, v ...interface{}) {
 	GetLogger().Printf("[ERROR] "+format, v...)
 }
 
-// LogDebug - логирует отладочное сообщение (используется редко)
+// LogDebug - логирует отладочное сообщение
 func LogDebug(format string, v ...interface{}) {
 	GetLogger().Printf("[DEBUG] "+format, v...)
 }
