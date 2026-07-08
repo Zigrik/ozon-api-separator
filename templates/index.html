@@ -23,13 +23,13 @@
                 <div class="cabinet-item" data-cabinet="shinorama">
                     <div class="cabinet-labels-row">
                         <div class="cabinet-labels-stats">
-                            <span class="stat-total" id="statTotal_shinorama">0</span>
+                            <span class="stat-orders" id="statOrders_shinorama">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-divided" id="statDivided_shinorama">0</span>
+                            <span class="stat-items" id="statItems_shinorama">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-to-order" id="statToOrder_shinorama">0</span>
+                            <span class="stat-labels-ordered" id="statLabelsOrdered_shinorama">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-to-download" id="statToDownload_shinorama">0</span>
+                            <span class="stat-labels-downloaded" id="statLabelsDownloaded_shinorama">0</span>
                         </div>
                     </div>
                     <div class="cabinet-row">
@@ -39,13 +39,13 @@
                 <div class="cabinet-item" data-cabinet="trecktrack">
                     <div class="cabinet-labels-row">
                         <div class="cabinet-labels-stats">
-                            <span class="stat-total" id="statTotal_trecktrack">0</span>
+                            <span class="stat-orders" id="statOrders_trecktrack">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-divided" id="statDivided_trecktrack">0</span>
+                            <span class="stat-items" id="statItems_trecktrack">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-to-order" id="statToOrder_trecktrack">0</span>
+                            <span class="stat-labels-ordered" id="statLabelsOrdered_trecktrack">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-to-download" id="statToDownload_trecktrack">0</span>
+                            <span class="stat-labels-downloaded" id="statLabelsDownloaded_trecktrack">0</span>
                         </div>
                     </div>
                     <div class="cabinet-row">
@@ -55,13 +55,13 @@
                 <div class="cabinet-item" data-cabinet="sevenhundredshin">
                     <div class="cabinet-labels-row">
                         <div class="cabinet-labels-stats">
-                            <span class="stat-total" id="statTotal_sevenhundredshin">0</span>
+                            <span class="stat-orders" id="statOrders_sevenhundredshin">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-divided" id="statDivided_sevenhundredshin">0</span>
+                            <span class="stat-items" id="statItems_sevenhundredshin">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-to-order" id="statToOrder_sevenhundredshin">0</span>
+                            <span class="stat-labels-ordered" id="statLabelsOrdered_sevenhundredshin">0</span>
                             <span class="stat-sep">/</span>
-                            <span class="stat-to-download" id="statToDownload_sevenhundredshin">0</span>
+                            <span class="stat-labels-downloaded" id="statLabelsDownloaded_sevenhundredshin">0</span>
                         </div>
                     </div>
                     <div class="cabinet-row">
@@ -81,8 +81,8 @@
                             </label>
                             <span id="autoModeStatusGlobal" class="auto-mode-indicator-small">выкл</span>
                         </div>
-                        <button id="triggerOrderLabelsBtn" class="control-btn order-btn">📦 Заказать</button>
-                        <button id="triggerDownloadLabelsBtn" class="control-btn download-btn">⬇️ Скачать</button>
+                        <button id="triggerOrderLabelsBtn" class="control-btn order-btn">Заказать</button>
+                        <button id="triggerDownloadLabelsBtn" class="control-btn download-btn">Скачать</button>
                     </div>
                 </div>
             </div>
@@ -102,22 +102,22 @@
 
                 <div class="stats-row">
                     <div class="stats-panel" id="statsPanel">
-                        <span>📊 Выделено (всего): <strong id="selectedOrdersCount">0</strong>(<strong id="totalOrdersCount">0</strong>) заказов</span>
-                        <span>📦 Товаров: <strong id="selectedProductsCount">0</strong>(<strong id="totalProductsCount">0</strong>)</span>
-                        <span>💰 Сумма: <strong id="selectedTotalPrice">0</strong> ₽</span>
+                        <span>Выделено (всего): <strong id="selectedOrdersCount">0</strong>(<strong id="totalOrdersCount">0</strong>) заказов</span>
+                        <span>Товаров: <strong id="selectedProductsCount">0</strong>(<strong id="totalProductsCount">0</strong>)</span>
+                        <span>Сумма: <strong id="selectedTotalPrice">0</strong> ₽</span>
                     </div>
                     <div class="stats-panel issues-panel" id="issuesPanel">
-                        <span>⚠️ Требуют страну: <strong id="countryRequiredCount">0</strong></span>
-                        <span>🏷️ Маркировка + ГТД: <strong id="markingRequiredCount">0</strong> (🔖 доступно: <strong id="availableCodesCount">0</strong>)</span>
-                        <button id="reloadCodesBtn" class="reload-btn" title="Перезагрузить коды из GTINs.txt" style="background:transparent;border:none;cursor:pointer;font-size:14px;padding:0 4px;">🔄</button>
+                        <span>Требуют страну: <strong id="countryRequiredCount">0</strong></span>
+                        <span>Маркировка + ГТД: <strong id="markingRequiredCount">0</strong> (доступно: <strong id="availableCodesCount">0</strong>)</span>
+                        <button id="reloadCodesBtn" class="reload-btn" title="Перезагрузить коды из GTINs.txt" style="background:transparent;border:none;cursor:pointer;font-size:14px;padding:0 4px;">⟳</button>
                     </div>
                 </div>
 
                 <div class="action-bar">
                     <div class="action-buttons">
-                        <button id="loadOrdersBtn" class="primary-btn">📦 Загрузить заказы</button>
-                        <button id="splitOrdersBtn" class="split-btn">✂️ Разделить заказы</button>
-                        <button id="generateLabelsBtn" class="label-btn">🏷️ Разделить и скачать этикетки</button>
+                        <button id="loadOrdersBtn" class="primary-btn">Загрузить заказы</button>
+                        <button id="splitOrdersBtn" class="split-btn">Разделить заказы</button>
+                        <button id="generateLabelsBtn" class="label-btn">Разделить и скачать этикетки</button>
                     </div>
                 </div>
                 
@@ -142,9 +142,9 @@
                                     <td class="checkbox-cell"><input type="checkbox" id="selectAllLeftBottom"></td>
                                     <td colspan="6" style="text-align: left; padding: 8px;">
                                         <div class="stats-panel" style="margin: 0; gap: 24px; background: transparent; padding: 0;">
-                                            <span>📊 Выделено (всего): <strong id="footerSelectedOrders">0</strong>(<strong id="footerTotalOrders">0</strong>) заказов</span>
-                                            <span>📦 Товаров: <strong id="footerSelectedProducts">0</strong>(<strong id="footerTotalProducts">0</strong>)</span>
-                                            <span>💰 Сумма: <strong id="footerSelectedPrice">0</strong> ₽</span>
+                                            <span>Выделено (всего): <strong id="footerSelectedOrders">0</strong>(<strong id="footerTotalOrders">0</strong>) заказов</span>
+                                            <span>Товаров: <strong id="footerSelectedProducts">0</strong>(<strong id="footerTotalProducts">0</strong>)</span>
+                                            <span>Сумма: <strong id="footerSelectedPrice">0</strong> ₽</span>
                                         </div>
                                     </td>
                                     <td class="checkbox-cell"><input type="checkbox" id="selectAllRightBottom"></td>
@@ -153,9 +153,9 @@
                         </table>
                     </div>
                     <div class="action-buttons-bottom">
-                        <button id="loadOrdersBtnBottom" class="primary-btn">📦 Загрузить заказы</button>
-                        <button id="splitOrdersBtnBottom" class="split-btn">✂️ Разделить заказы</button>
-                        <button id="generateLabelsBtnBottom" class="label-btn">🏷️ Разделить и скачать этикетки</button>
+                        <button id="loadOrdersBtnBottom" class="primary-btn">Загрузить заказы</button>
+                        <button id="splitOrdersBtnBottom" class="split-btn">Разделить заказы</button>
+                        <button id="generateLabelsBtnBottom" class="label-btn">Разделить и скачать этикетки</button>
                     </div>
                 </div>
             </div>
@@ -165,15 +165,15 @@
     <div id="markingModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>🏷️ Добавление маркировки и ГТД</h3>
+                <h3>Добавление маркировки и ГТД</h3>
                 <span class="modal-close" data-modal="marking">&times;</span>
             </div>
             <div class="modal-body">
                 <p id="markingProductInfo"></p>
                 <p id="markingCodesInfo"></p>
                 <div class="modal-buttons">
-                    <button id="markingConfirmBtn" class="primary-btn">✅ Добавить</button>
-                    <button id="markingCancelBtn" class="secondary-btn">❌ Отмена</button>
+                    <button id="markingConfirmBtn" class="primary-btn">Добавить</button>
+                    <button id="markingCancelBtn" class="secondary-btn">Отмена</button>
                 </div>
             </div>
         </div>
@@ -182,18 +182,18 @@
     <div id="countryModal" class="modal" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>🌍 Выбор страны производителя</h3>
+                <h3>Выбор страны производителя</h3>
                 <span class="modal-close-country" data-modal="country">&times;</span>
             </div>
             <div class="modal-body">
                 <p id="countryProductInfo"></p>
                 <div class="country-search-container">
-                    <input type="text" id="countrySearchInput" class="country-search-input" placeholder="🔍 Поиск страны или введите код (RU, CN, DE)...">
+                    <input type="text" id="countrySearchInput" class="country-search-input" placeholder="Поиск страны или введите код (RU, CN, DE)...">
                 </div>
                 <select id="countrySelect" class="country-select" size="8"></select>
                 <div class="modal-buttons">
-                    <button id="countryConfirmBtn" class="primary-btn">✅ Сохранить</button>
-                    <button id="countryCancelBtn" class="secondary-btn">❌ Отмена</button>
+                    <button id="countryConfirmBtn" class="primary-btn">Сохранить</button>
+                    <button id="countryCancelBtn" class="secondary-btn">Отмена</button>
                 </div>
             </div>
         </div>
@@ -278,16 +278,66 @@
 
     async function apiRequest(url, opts = {}) {
         const headers = { 'Content-Type': 'application/json', ...opts.headers };
-        if (authToken) headers['X-Auth-Token'] = authToken;
+        
+        if (!authToken) {
+            authToken = localStorage.getItem('authToken');
+        }
+        
+        if (authToken) {
+            headers['X-Auth-Token'] = authToken;
+        }
+        
         const res = await fetch(url, { ...opts, headers });
         
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('text/html')) {
             console.error('❌ API вернул HTML вместо JSON:', url);
-            throw new Error('Ошибка авторизации или неправильный маршрут');
+            // Пробуем запросить без токена (если эндпоинт без авторизации)
+            try {
+                const retryRes = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json' } });
+                if (retryRes.ok) {
+                    const data = await retryRes.json();
+                    return data;
+                }
+            } catch (e) {
+                console.warn('Повторный запрос без токена не удался');
+            }
+            
+            // Если все равно ошибка - для статистики возвращаем пустые данные
+            if (url.includes('/api/orders/stats')) {
+                return { status: 'ok', orders_divided: 0, items_divided: 0, labels_ordered: 0, labels_downloaded: 0 };
+            }
+            if (url.includes('/api/auto-mode/global-status')) {
+                return { status: 'ok', enabled: false };
+            }
+            if (url.includes('/api/settings')) {
+                return { status: 'ok' };
+            }
+            
+            // Для остальных - сбрасываем сессию
+            if (authToken) {
+                authToken = null;
+                localStorage.removeItem('authToken');
+            }
+            if (!url.includes('/api/check-password')) {
+                document.getElementById('mainContent').style.display = 'none';
+                document.getElementById('authPanel').style.display = 'block';
+                showToast('Сессия истекла', true);
+            }
+            throw new Error('unauthorized');
         }
         
         if (res.status === 401) {
+            // Для статистики и авто-режима - возвращаем пустые данные
+            if (url.includes('/api/orders/stats')) {
+                return { status: 'ok', orders_divided: 0, items_divided: 0, labels_ordered: 0, labels_downloaded: 0 };
+            }
+            if (url.includes('/api/auto-mode/global-status')) {
+                return { status: 'ok', enabled: false };
+            }
+            if (url.includes('/api/settings')) {
+                return { status: 'ok' };
+            }
             authToken = null;
             localStorage.removeItem('authToken');
             document.getElementById('mainContent').style.display = 'none';
@@ -295,25 +345,41 @@
             showToast('Сессия истекла', true);
             throw new Error('unauthorized');
         }
+        
         if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Ошибка запроса');
+            let errorMsg = 'Ошибка запроса';
+            try {
+                const err = await res.json();
+                errorMsg = err.error || err.message || errorMsg;
+            } catch (e) {
+                const text = await res.text();
+                errorMsg = `Ошибка ${res.status}: ${text.substring(0, 100)}`;
+            }
+            throw new Error(errorMsg);
         }
+        
         return res.json();
     }
 
-    // ==================== СТАТИСТИКА ====================
     async function loadCabinetStats(cabinet) {
         try {
+            console.log(`📊 Запрос статистики для ${cabinet}...`);
             const data = await apiRequest(`/api/orders/stats?cabinet=${cabinet}`);
+            console.log(`📊 Ответ для ${cabinet}:`, JSON.stringify(data, null, 2));
             if (data.status === 'ok') {
-                document.getElementById(`statTotal_${cabinet}`).textContent = data.total || 0;
-                document.getElementById(`statDivided_${cabinet}`).textContent = data.divided || 0;
-                document.getElementById(`statToOrder_${cabinet}`).textContent = data.to_order || 0;
-                document.getElementById(`statToDownload_${cabinet}`).textContent = data.to_download || 0;
+                document.getElementById(`statOrders_${cabinet}`).textContent = data.orders_divided || 0;
+                document.getElementById(`statItems_${cabinet}`).textContent = data.items_divided || 0;
+                document.getElementById(`statLabelsOrdered_${cabinet}`).textContent = data.labels_ordered || 0;
+                document.getElementById(`statLabelsDownloaded_${cabinet}`).textContent = data.labels_downloaded || 0;
+                console.log(`✅ Обновлено: orders=${data.orders_divided}, items=${data.items_divided}`);
             }
         } catch (err) {
             console.error('Ошибка загрузки статистики для', cabinet, ':', err);
+            // Если ошибка - показываем 0
+            document.getElementById(`statOrders_${cabinet}`).textContent = 0;
+            document.getElementById(`statItems_${cabinet}`).textContent = 0;
+            document.getElementById(`statLabelsOrdered_${cabinet}`).textContent = 0;
+            document.getElementById(`statLabelsDownloaded_${cabinet}`).textContent = 0;
         }
     }
 
@@ -323,7 +389,6 @@
         }
     }
 
-    // ==================== АВТО-РЕЖИМ ====================
     async function loadAutoModeStatus() {
         try {
             const data = await apiRequest('/api/auto-mode/global-status');
@@ -333,7 +398,10 @@
             document.getElementById('autoModeStatusGlobal').textContent = enabled ? 'вкл' : 'выкл';
             document.getElementById('autoModeStatusGlobal').style.color = enabled ? '#28a745' : '#dc3545';
         } catch (err) {
-            console.error('Ошибка загрузки статуса авто-режима:', err);
+            console.warn('⚠️ Ошибка загрузки статуса авто-режима:', err.message);
+            // Если ошибка - просто показываем "выкл" по умолчанию
+            document.getElementById('autoModeStatusGlobal').textContent = 'выкл';
+            document.getElementById('autoModeStatusGlobal').style.color = '#dc3545';
         }
     }
 
@@ -359,14 +427,15 @@
             
             const tbody = document.getElementById('ordersList');
             if (orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">📭 Нет заказов, ожидающих сборки</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">Нет заказов, ожидающих сборки</td></tr>';
             } else {
                 tbody.innerHTML = orders.map((order, i) => {
-                    const hasIssues = order.products.some(p => 
-                        p.is_mandatory_marked || 
-                        p.is_gtd_required || 
-                        p.is_country_required
-                    );
+                    const hasIssues = order.products.some(p => {
+                        const needCountry = p.is_country_required || (p.requirements && p.requirements.is_country_required);
+                        const needMarking = p.is_mandatory_marked || p.is_gtd_required || 
+                                           (p.requirements && (p.requirements.is_mandatory_marked || p.requirements.is_gtd_required));
+                        return needCountry || needMarking;
+                    });
                     
                     const isDivided = order.is_divided || false;
                     const isReadyForSplit = order.is_ready_for_split || false;
@@ -383,8 +452,8 @@
                     const disabledAttr = (hasIssues || isDivided || isReadyForSplit) ? 'disabled' : '';
                     
                     let statusText = 'Ожидает сборки';
-                    if (isDivided) statusText = '✅ Разделён';
-                    else if (isReadyForSplit) statusText = '📁 Готов к разделению';
+                    if (isDivided) statusText = 'Разделён';
+                    else if (isReadyForSplit) statusText = 'Готов к разделению';
                     
                     return `
                         <tr class="${rowClass}" data-posting-number="${order.posting_number}">
@@ -400,14 +469,28 @@
                                     let warnings = [];
                                     let priceVal = typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0;
                                     
-                                    if (p.is_mandatory_marked || p.is_gtd_required || p.is_marking_completed) {
-                                        if (p.is_marking_completed) {
-                                            warnings.push('<span class="mark-completed">✅ Информация добавлена</span>');
+                                    const needCountry = p.is_country_required || 
+                                                       (p.requirements && p.requirements.is_country_required);
+                                    
+                                    const needMarking = p.is_mandatory_marked || 
+                                                       p.is_gtd_required ||
+                                                       (p.requirements && (p.requirements.is_mandatory_marked || p.requirements.is_gtd_required));
+                                    
+                                    const markingCompleted = p.is_marking_completed || 
+                                                            (p.marking && p.marking.is_completed);
+                                    
+                                    if (needCountry) {
+                                        warnings.push('<span class="country-warning clickable" data-action="country">Выбрать страну</span>');
+                                    }
+                                    
+                                    if (needMarking || markingCompleted) {
+                                        if (markingCompleted) {
+                                            warnings.push('<span class="mark-completed">Информация добавлена</span>');
                                         } else {
-                                            // Требуется маркировка, но еще не добавлена
-                                            warnings.push('<span class="mark-warning clickable" data-action="marking">🏷️ Маркировка + ГТД</span>');
+                                            warnings.push('<span class="mark-warning clickable" data-action="marking">Маркировка + ГТД</span>');
                                         }
                                     }
+                                    
                                     return `
                                         <div class="product-item" 
                                              data-pid="${p.product_id || 0}" 
@@ -540,9 +623,10 @@
             const order = orders.find(o => o.posting_number === row.dataset.postingNumber);
             if (order) {
                 order.products.forEach(p => {
-                    const isReady = !p.is_mandatory_marked && 
-                                   !p.is_gtd_required && 
-                                   !p.is_country_required;
+                    const needCountry = p.is_country_required || (p.requirements && p.requirements.is_country_required);
+                    const needMarking = p.is_mandatory_marked || p.is_gtd_required || 
+                                       (p.requirements && (p.requirements.is_mandatory_marked || p.requirements.is_gtd_required));
+                    const isReady = !needCountry && !needMarking;
                     if (isReady) {
                         selectedProductsCount += p.quantity;
                         selectedTotalPrice += (typeof p.price === 'number' ? p.price : (parseFloat(p.price) || 0)) * p.quantity;
@@ -653,13 +737,21 @@
         let markingRequired = 0;
         orders.forEach(order => {
             order.products.forEach(product => {
-                if (product.is_country_required) {
+                const needCountry = product.is_country_required || 
+                                   (product.requirements && product.requirements.is_country_required);
+                const needMarking = product.is_mandatory_marked || 
+                                   product.is_gtd_required ||
+                                   (product.requirements && (product.requirements.is_mandatory_marked || product.requirements.is_gtd_required));
+                const markingCompleted = product.is_marking_completed || 
+                                        (product.marking && product.marking.is_completed);
+                
+                if (needCountry) {
                     if (!product.country?.is_completed) {
                         countryRequired += product.quantity;
                     }
                 }
-                if (product.is_mandatory_marked || product.is_gtd_required) {
-                    if (!product.is_marking_completed) {
+                if (needMarking) {
+                    if (!markingCompleted) {
                         markingRequired += product.quantity;
                     }
                 }
@@ -671,20 +763,15 @@
 
     async function updateAvailableCodes() {
         try {
-            console.log('🔄 updateAvailableCodes вызван');
             const data = await apiRequest('/api/codes/available');
-            console.log('📊 Ответ от /api/codes/available:', data);
             const count = data.count || 0;
             const el = document.getElementById('availableCodesCount');
             if (el) {
                 el.textContent = count;
-                console.log('✅ Обновлено DOM: availableCodesCount =', count);
-            } else {
-                console.error('❌ Элемент availableCodesCount не найден в DOM');
             }
             return count;
         } catch (e) {
-            console.error('❌ Ошибка updateAvailableCodes:', e);
+            console.error('Ошибка updateAvailableCodes:', e);
             return 0;
         }
     }
@@ -692,20 +779,16 @@
     // ==================== ПЕРЕЗАГРУЗКА КОДОВ ====================
     document.getElementById('reloadCodesBtn').addEventListener('click', async function() {
         try {
-            showToast('🔄 Перезагрузка кодов...');
+            showToast('Перезагрузка кодов...');
             const res = await fetch('/api/codes/reload', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken }
             });
             const data = await res.json();
-            console.log('Перезагрузка кодов:', data);
             if (data.status === 'ok') {
                 showToast(`✅ ${data.message}`);
                 await new Promise(resolve => setTimeout(resolve, 100));
-                const count = await updateAvailableCodes();
-                console.log('Обновленный счетчик:', count);
-                const domCount = document.getElementById('availableCodesCount').textContent;
-                console.log('DOM счетчик:', domCount);
+                await updateAvailableCodes();
             } else {
                 showToast(`❌ ${data.message}`, true);
             }
@@ -717,6 +800,7 @@
 
     // ==================== КНОПКИ ТОВАРОВ ====================
     function bindProductButtons() {
+        // Кнопки страны
         document.querySelectorAll('.country-warning').forEach(btn => {
             if (btn.dataset.bound === 'true') return;
             btn.addEventListener('click', async function(e) {
@@ -752,11 +836,21 @@
                     showToast('Ошибка: товар не найден', true);
                     return;
                 }
+                
+                const needCountry = product.is_country_required || 
+                                   (product.requirements && product.requirements.is_country_required);
+                
+                if (!needCountry) {
+                    showToast('Для этого товара не требуется страна', true);
+                    return;
+                }
+                
                 await openCountryModal(order, product);
             });
             btn.dataset.bound = 'true';
         });
         
+        // Кнопки маркировки
         document.querySelectorAll('.mark-warning').forEach(btn => {
             if (btn.dataset.bound === 'true') return;
             btn.addEventListener('click', async function(e) {
@@ -800,10 +894,6 @@
 
     // ==================== МОДАЛЬНЫЕ ОКНА ====================
     async function openMarkingModal(order, product) {
-        console.log('🏷️ openMarkingModal вызван');
-        console.log('📦 Заказ:', order.posting_number);
-        console.log('🛒 Товар (все поля):', JSON.stringify(product, null, 2));
-        
         const available = await updateAvailableCodes();
         if (available < product.quantity) {
             showToast(`Нужно ${product.quantity} кодов, доступно ${available}`, true);
@@ -818,7 +908,6 @@
                 for (const p of orderData.products) {
                     if (p.offer_id === product.offer_id) {
                         finalProductId = p.product_id || p.sku || 0;
-                        console.log('✅ Найден по offer_id, product_id:', finalProductId);
                         break;
                     }
                 }
@@ -827,15 +916,11 @@
             if (finalProductId === 0 && orderData.products.length > 0) {
                 const p = orderData.products[0];
                 finalProductId = p.product_id || p.sku || 0;
-                console.log('✅ Взят первый товар, product_id:', finalProductId);
             }
         }
         
-        console.log('🏁 Итоговый product_id:', finalProductId);
-        
         if (finalProductId === 0) {
-            console.error('❌ НЕ УДАЛОСЬ НАЙТИ product_id!');
-            showToast('❌ Ошибка: не удалось определить ID товара', true);
+            showToast('Ошибка: не удалось определить ID товара', true);
             return;
         }
         
@@ -847,22 +932,17 @@
             productName: product.name
         };
         
-        console.log('✅ currentMarkingData:', currentMarkingData);
-        
         const modal = document.getElementById('markingModal');
         document.getElementById('markingProductInfo').innerHTML = `<strong>Товар:</strong> ${product.name}<br><strong>Заказ:</strong> ${order.posting_number}<br><strong>Кол-во:</strong> ${product.quantity}<br><strong>Offer ID:</strong> ${product.offer_id || '—'}<br><strong>Product ID:</strong> ${finalProductId}`;
-        document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>⚠️ ГТД будет отмечено как отсутствующее автоматически.`;
+        document.getElementById('markingCodesInfo').innerHTML = `<strong>Доступно кодов:</strong> ${available}<br><strong>Требуется:</strong> ${product.quantity}<br><br>ГТД будет отмечено как отсутствующее автоматически.`;
         modal.style.display = 'flex';
     }
 
     async function addMarkings() {
         if (!currentMarkingData) return;
         
-        console.log('🏷️ addMarkings currentMarkingData:', currentMarkingData);
-        
         if (!currentMarkingData.productId || currentMarkingData.productId === 0) {
-            console.error('❌ productId = 0 или отсутствует');
-            showToast('❌ Ошибка: не удалось определить ID товара', true);
+            showToast('Ошибка: не удалось определить ID товара', true);
             return;
         }
         
@@ -874,7 +954,7 @@
             });
             const codesData = await codesRes.json();
             if (codesData.status !== 'ok') {
-                showToast(`❌ ${codesData.message}`, true);
+                showToast(`Ошибка: ${codesData.message}`, true);
                 return;
             }
             
@@ -886,27 +966,20 @@
                 codes: codesData.codes
             };
             
-            console.log('📤 Отправка на сервер:', payload);
-            
             const res = await fetch('/api/markings/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
                 body: JSON.stringify(payload)
             });
             
-            console.log('📥 Статус ответа:', res.status);
             const text = await res.text();
-            console.log('📥 Текст ответа:', text);
-            
             let data;
             try {
                 data = JSON.parse(text);
             } catch (e) {
-                console.error('❌ Не удалось распарсить JSON:', text);
-                showToast('❌ Ошибка сервера: ' + text.substring(0, 100), true);
+                showToast('Ошибка сервера: ' + text.substring(0, 100), true);
                 return;
             }
-            console.log('📥 Ответ сервера (распарсенный):', data);
             
             if (data.status === 'ok') {
                 showToast(`✅ ${data.message}`);
@@ -914,16 +987,22 @@
                 closeAllModals();
                 await loadOrders();
             } else {
-                showToast(`❌ ${data.message}`, true);
+                showToast(`Ошибка: ${data.message}`, true);
             }
         } catch (err) {
-            console.error('❌ Ошибка:', err);
-            showToast(`❌ ${err.message}`, true);
+            showToast(`Ошибка: ${err.message}`, true);
         }
     }
 
     async function openCountryModal(order, product) {
-        console.log('🌍 openCountryModal:', { order: order.posting_number, product });
+        const needCountry = product.is_country_required || 
+                           (product.requirements && product.requirements.is_country_required);
+        
+        if (!needCountry) {
+            showToast('Для этого товара не требуется страна', true);
+            return;
+        }
+        
         await loadCountries();
         const searchInput = document.getElementById('countrySearchInput');
         if (searchInput) searchInput.value = '';
@@ -943,7 +1022,7 @@
         }
         
         if (finalProductId === 0) {
-            showToast('❌ Ошибка: не удалось определить ID товара', true);
+            showToast('Ошибка: не удалось определить ID товара', true);
             return;
         }
         
@@ -1008,10 +1087,10 @@
                 closeAllModals();
                 await loadOrders();
             } else {
-                showToast(`❌ ${data.message}`, true);
+                showToast(`Ошибка: ${data.message}`, true);
             }
         } catch (err) {
-            showToast(`❌ ${err.message}`, true);
+            showToast(`Ошибка: ${err.message}`, true);
         }
     }
 
@@ -1069,7 +1148,6 @@
         }
     }
 
-    // ==================== АВТОРИЗАЦИЯ ====================
     async function checkPassword() {
         const pwd = document.getElementById('passwordInput').value;
         const errDiv = document.getElementById('authError');
@@ -1089,14 +1167,17 @@
             if (data.token) {
                 authToken = data.token;
                 localStorage.setItem('authToken', authToken);
+                console.log('✅ Токен сохранен:', authToken);
             }
             isAuth = true;
             document.getElementById('authPanel').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
             showToast('Добро пожаловать!');
-            await loadAutoModeStatus();
+            
+            // Загружаем статистику и заказы (авто-режим загружается внутри)
             await loadAllStats();
             await loadOrders();
+            
         } catch (err) {
             errDiv.textContent = err.message;
             errDiv.style.display = 'block';
@@ -1116,11 +1197,12 @@
         for (const num of numbers) {
             const order = orders.find(o => o.posting_number === num);
             if (order) {
-                const valid = order.products.filter(p => 
-                    !p.is_mandatory_marked && 
-                    !p.is_gtd_required && 
-                    !p.is_country_required
-                );
+                const valid = order.products.filter(p => {
+                    const needCountry = p.is_country_required || (p.requirements && p.requirements.is_country_required);
+                    const needMarking = p.is_mandatory_marked || p.is_gtd_required || 
+                                       (p.requirements && (p.requirements.is_mandatory_marked || p.requirements.is_gtd_required));
+                    return !needCountry && !needMarking;
+                });
                 if (valid.length) {
                     toShip.push({
                         posting_number: num,
@@ -1172,11 +1254,12 @@
         for (const num of numbers) {
             const order = orders.find(o => o.posting_number === num);
             if (order) {
-                const valid = order.products.filter(p => 
-                    !p.is_mandatory_marked && 
-                    !p.is_gtd_required && 
-                    !p.is_country_required
-                );
+                const valid = order.products.filter(p => {
+                    const needCountry = p.is_country_required || (p.requirements && p.requirements.is_country_required);
+                    const needMarking = p.is_mandatory_marked || p.is_gtd_required || 
+                                       (p.requirements && (p.requirements.is_mandatory_marked || p.requirements.is_gtd_required));
+                    return !needCountry && !needMarking;
+                });
                 if (valid.length) {
                     toShip.push({
                         posting_number: num,
@@ -1295,7 +1378,7 @@
         document.getElementById('triggerOrderLabelsBtn').addEventListener('click', async function() {
             try {
                 await apiRequest('/api/labels/trigger-order', { method: 'POST' });
-                showToast('✅ Запущен заказ этикеток');
+                showToast('Запущен заказ этикеток');
                 setTimeout(async () => {
                     await loadOrders();
                     await loadAllStats();
@@ -1308,7 +1391,7 @@
         document.getElementById('triggerDownloadLabelsBtn').addEventListener('click', async function() {
             try {
                 await apiRequest('/api/labels/trigger-download', { method: 'POST' });
-                showToast('✅ Запущено скачивание этикеток');
+                showToast('Запущено скачивание этикеток');
                 setTimeout(async () => {
                     await loadOrders();
                     await loadAllStats();

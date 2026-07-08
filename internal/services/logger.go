@@ -23,7 +23,9 @@ func InitLogger() error {
 	var err error
 	loggerOnce.Do(func() {
 		logsPath := config.GetLogsPath()
+		// Создаем папку рекурсивно
 		if err = os.MkdirAll(logsPath, 0755); err != nil {
+			log.Printf("[ERROR] Не удалось создать папку логов %s: %v", logsPath, err)
 			return
 		}
 
@@ -32,9 +34,11 @@ func InitLogger() error {
 
 		logFile, err = os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
+			log.Printf("[ERROR] Не удалось создать файл лога %s: %v", logFilePath, err)
 			return
 		}
 
+		// Пишем и в консоль, и в файл
 		multiWriter := io.MultiWriter(os.Stdout, logFile)
 		logger = log.New(multiWriter, "", log.LstdFlags)
 	})

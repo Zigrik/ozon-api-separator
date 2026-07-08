@@ -65,6 +65,9 @@ func runApp() {
 
 	// API без авторизации
 	http.HandleFunc("/api/check-password", handlers.HandleCheckPassword)
+	http.HandleFunc("/api/orders/stats", handlers.HandleGetStats)
+	http.HandleFunc("/api/auto-mode/global-status", handlers.HandleGlobalAutoModeStatus) // <-- ДОЛЖНО БЫТЬ
+	http.HandleFunc("/api/settings", handlers.HandleGetSettings)
 
 	// API с авторизацией
 	http.HandleFunc("/api/cabinet/switch", middleware.AuthMiddleware(handlers.HandleSwitchCabinet))
@@ -72,7 +75,6 @@ func runApp() {
 	http.HandleFunc("/api/orders/ship", middleware.AuthMiddleware(handlers.HandleShipOrders))
 	http.HandleFunc("/api/orders/ship-and-labels", middleware.AuthMiddleware(handlers.HandleShipAndOrderLabels))
 	http.HandleFunc("/api/orders/state", middleware.AuthMiddleware(handlers.HandleGetOrderState))
-	http.HandleFunc("/api/orders/stats", middleware.AuthMiddleware(handlers.HandleGetStats))
 
 	http.HandleFunc("/api/countries/list", middleware.AuthMiddleware(handlers.HandleGetCountries))
 	http.HandleFunc("/api/countries/set", middleware.AuthMiddleware(handlers.HandleSetCountry))
@@ -90,9 +92,6 @@ func runApp() {
 	http.HandleFunc("/api/labels/trigger-download", middleware.AuthMiddleware(handlers.HandleTriggerDownloadLabels))
 
 	http.HandleFunc("/api/auto-mode/global", middleware.AuthMiddleware(handlers.HandleGlobalAutoMode))
-	http.HandleFunc("/api/auto-mode/global-status", middleware.AuthMiddleware(handlers.HandleGlobalAutoModeStatus))
-
-	http.HandleFunc("/api/settings", handlers.HandleGetSettings)
 
 	port := os.Getenv("PORT")
 	if port == "" {

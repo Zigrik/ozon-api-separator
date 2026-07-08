@@ -22,7 +22,7 @@ func ShipOrdersInternal(cabinet *models.CabinetConfig, ordersToShip []struct {
 	// Получаем актуальные заказы для исправления product_id
 	orders, err := GetAwaitingPackagingOrders(cabinet)
 	if err != nil {
-		log.Printf("⚠️ Ошибка получения заказов для исправления product_id: %v", err)
+		log.Printf("[WARNING] Ошибка получения заказов для исправления product_id: %v", err)
 	}
 	ordersMap := make(map[string][]models.Product)
 	for _, order := range orders {
@@ -64,13 +64,13 @@ func ShipOrdersInternal(cabinet *models.CabinetConfig, ordersToShip []struct {
 					}
 				}
 				if productID == 0 {
-					log.Printf("❌ Не удалось исправить ProductID=0 для заказа %s (offer_id=%s)", orderReq.PostingNumber, product.OfferID)
+					log.Printf("[ERROR] Не удалось исправить ProductID=0 для заказа %s (offer_id=%s)", orderReq.PostingNumber, product.OfferID)
 					result["status"] = "error"
 					result["error"] = fmt.Sprintf("Не удалось определить товар для заказа %s", orderReq.PostingNumber)
 					results = append(results, result)
 					continue
 				} else {
-					log.Printf("⚠️ ProductID был 0, исправлен на %d для заказа %s (offer_id=%s)", productID, orderReq.PostingNumber, product.OfferID)
+					log.Printf("[INFO] ProductID был 0, исправлен на %d для заказа %s (offer_id=%s)", productID, orderReq.PostingNumber, product.OfferID)
 				}
 			}
 
@@ -96,22 +96,22 @@ func ShipOrdersInternal(cabinet *models.CabinetConfig, ordersToShip []struct {
 
 		shipments, err := ShipOrder(cabinet, orderReq.PostingNumber, packages)
 		if err != nil {
-			log.Printf("❌ Ошибка разделения заказа %s: %v", orderReq.PostingNumber, err)
+			log.Printf("[ERROR] Ошибка разделения заказа %s: %v", orderReq.PostingNumber, err)
 			result["status"] = "error"
 			result["error"] = err.Error()
 			results = append(results, result)
 			continue
 		}
 
-		log.Printf("✅ Заказ %s разделён на %d отправлений", orderReq.PostingNumber, len(shipments))
+		log.Printf("[INFO] Заказ %s разделён на %d отправлений", orderReq.PostingNumber, len(shipments))
 
 		if err := UpdateOrderAfterShip(cabinet.Key, orderReq.PostingNumber, shipments, productIDs, 1); err != nil {
-			log.Printf("⚠️ Ошибка сохранения состояния после разделения: %v", err)
+			log.Printf("[WARNING] Ошибка сохранения состояния после разделения: %v", err)
 		}
 
 		if wakeWorker {
 			WakeLabelWorker()
-			log.Printf("🔔 Пробужден воркер заказа этикеток для заказа %s", orderReq.PostingNumber)
+			log.Printf("[INFO] Пробужден воркер заказа этикеток для заказа %s", orderReq.PostingNumber)
 		}
 
 		result["status"] = "success"

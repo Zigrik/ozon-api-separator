@@ -139,10 +139,10 @@ body[data-cabinet="sevenhundredshin"] { background-color: #ffebee; }
     font-weight: 600;
 }
 
-.stat-total { color: #999; }
-.stat-divided { color: #28a745; }
-.stat-to-order { color: #ffc107; }
-.stat-to-download { color: #dc3545; }
+.stat-orders { color: #007bff; }
+.stat-items { color: #28a745; }
+.stat-labels-ordered { color: #ffc107; }
+.stat-labels-downloaded { color: #dc3545; }
 .stat-sep { color: #ccc; font-weight: 300; }
 
 .cabinet-row {
@@ -405,7 +405,6 @@ input:checked + .slider-small:before {
     background-color: #fff59d !important; 
 }
 
-/* Заказ готов к автоматическому разделению (есть папка) */
 .order-row.ready-for-split {
     background-color: #fff8e1 !important;
     opacity: 0.85;

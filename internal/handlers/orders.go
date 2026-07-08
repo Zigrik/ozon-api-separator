@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
 	"ozon-api-separator/internal/config"
 	"ozon-api-separator/internal/services"
@@ -18,29 +19,29 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 
 	cabinet := config.GetActiveConfig()
 	if cabinet.ClientID == "" || cabinet.APIKey == "" {
-		log.Printf("❌ Кабинет '%s' не настроен", cabinet.Name)
+		log.Printf("[ERROR] Кабинет '%s' не настроен", cabinet.Name)
 		http.Error(w, "Cabinet not configured", http.StatusServiceUnavailable)
 		return
 	}
 
-	log.Printf("📦 Загрузка заказов для кабинета '%s'", cabinet.Name)
+	log.Printf("[INFO] Загрузка заказов для кабинета '%s'", cabinet.Name)
 
 	orders, err := services.GetAwaitingPackagingOrders(cabinet)
 	if err != nil {
-		log.Printf("❌ Ошибка загрузки заказов: %v", err)
+		log.Printf("[ERROR] Ошибка загрузки заказов: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("✅ Загружено %d заказов из Ozon API", len(orders))
+	log.Printf("[INFO] Загружено %d заказов из Ozon API", len(orders))
 
 	if err := services.UpdateOrders(cabinet.Key, cabinet.Name, orders); err != nil {
-		log.Printf("⚠️ Ошибка сохранения состояния: %v", err)
+		log.Printf("[WARNING] Ошибка сохранения состояния: %v", err)
 	}
 
 	state, err := services.LoadCabinetState(cabinet.Key)
 	if err != nil {
-		log.Printf("⚠️ Ошибка загрузки состояния: %v", err)
+		log.Printf("[WARNING] Ошибка загрузки состояния: %v", err)
 	}
 
 	readyMap := make(map[string]bool)
@@ -75,12 +76,12 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 
 		markingStatus, err := services.CheckMarkingStatus(cabinet, order.PostingNumber)
 		if err != nil {
-			log.Printf("⚠️ Ошибка проверки статуса маркировки для заказа %s: %v", order.PostingNumber, err)
+			log.Printf("[WARNING] Ошибка проверки статуса маркировки для заказа %s: %v", order.PostingNumber, err)
 			continue
 		}
 
 		if err := services.UpdateMarkingStatusFromAPI(cabinet.Key, order.PostingNumber, markingStatus); err != nil {
-			log.Printf("⚠️ Ошибка обновления статуса маркировки: %v", err)
+			log.Printf("[WARNING] Ошибка обновления статуса маркировки: %v", err)
 		}
 
 		for j := range order.Products {
@@ -182,7 +183,7 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int, wakeWork
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("❌ Ошибка декодирования запроса: %v", err)
+		log.Printf("[ERROR] Ошибка декодирования запроса: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -215,7 +216,7 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int, wakeWork
 
 	results, err := services.ShipOrdersInternal(cabinet, ordersToShip, wakeWorker)
 	if err != nil {
-		log.Printf("❌ Ошибка разделения: %v", err)
+		log.Printf("[ERROR] Ошибка разделения: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -231,9 +232,9 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int, wakeWork
 	}
 
 	if needLabels == 1 && wakeWorker {
-		log.Printf("📊 Разделение и заказ этикеток завершены: успешно %d, ошибок %d", successCount, errorCount)
+		log.Printf("[INFO] Разделение и заказ этикеток завершены: успешно %d, ошибок %d", successCount, errorCount)
 	} else {
-		log.Printf("📊 Разделение завершено: успешно %d, ошибок %d", successCount, errorCount)
+		log.Printf("[INFO] Разделение завершено: успешно %d, ошибок %d", successCount, errorCount)
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -259,7 +260,7 @@ func HandleGetOrderState(w http.ResponseWriter, r *http.Request) {
 
 	orderState, err := services.GetOrderState(cabinet.Key, postingNumber)
 	if err != nil {
-		log.Printf("❌ Ошибка получения состояния заказа: %v", err)
+		log.Printf("[ERROR] Ошибка получения состояния заказа: %v", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -288,44 +289,44 @@ func HandleGetStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, err := services.LoadCabinetState(cabinetKey)
-	if err != nil {
-		log.Printf("❌ Ошибка загрузки состояния: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Проверяем существование файла
+	filePath := services.GetOrdersFilePath(cabinetKey)
+	log.Printf("[DEBUG] Путь к файлу статистики: %s", filePath)
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		log.Printf("[WARNING] Файл статистики не существует: %s", filePath)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":            "ok",
+			"orders_divided":    0,
+			"items_divided":     0,
+			"labels_ordered":    0,
+			"labels_downloaded": 0,
+		})
 		return
 	}
 
-	total := 0
-	divided := 0
-	toOrder := 0
-	toDownload := 0
-
-	for _, order := range state.Orders {
-		orderTotal := 0
-		for _, product := range order.Products {
-			orderTotal += product.Quantity
-		}
-		total += orderTotal
-
-		if order.IsDivided {
-			divided += orderTotal
-		}
-
-		if order.IsDivided {
-			switch order.LabelsStatus {
-			case 1:
-				toOrder += orderTotal
-			case 2:
-				toDownload += orderTotal
-			}
-		}
+	// Получаем статистику
+	ordersDivided, itemsDivided, labelsOrdered, labelsDownloaded, err := services.GetTodayStats(cabinetKey)
+	if err != nil {
+		log.Printf("[ERROR] Ошибка получения статистики: %v", err)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":            "ok",
+			"orders_divided":    0,
+			"items_divided":     0,
+			"labels_ordered":    0,
+			"labels_downloaded": 0,
+		})
+		return
 	}
 
+	log.Printf("[INFO] Статистика для кабинета %s: заказов=%d, товаров=%d, этикеток заказано=%d, скачано=%d",
+		cabinetKey, ordersDivided, itemsDivided, labelsOrdered, labelsDownloaded)
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":      "ok",
-		"total":       total,
-		"divided":     divided,
-		"to_order":    toOrder,
-		"to_download": toDownload,
+		"status":            "ok",
+		"orders_divided":    ordersDivided,
+		"items_divided":     itemsDivided,
+		"labels_ordered":    labelsOrdered,
+		"labels_downloaded": labelsDownloaded,
 	})
 }

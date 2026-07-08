@@ -18,7 +18,7 @@ import (
 
 var stateMutex sync.Mutex
 
-// GetOrdersFilePath - возвращает путь к файлу состояния
+// GetOrdersFilePath - возвращает путь к файлу состояния для конкретного кабинета (экспортируемая)
 func GetOrdersFilePath(cabinetKey string) string {
 	ordersPath := config.GetOrdersPath()
 	os.MkdirAll(ordersPath, 0755)
@@ -73,6 +73,51 @@ func SaveCabinetState(state *models.CabinetState) error {
 	}
 
 	return nil
+}
+
+// GetTodayStats - возвращает статистику из текущего файла состояния
+func GetTodayStats(cabinetKey string) (ordersDivided, itemsDivided, labelsOrdered, labelsDownloaded int, err error) {
+	state, err := LoadCabinetState(cabinetKey)
+	if err != nil {
+		log.Printf("[ERROR] Ошибка загрузки состояния для %s: %v", cabinetKey, err)
+		return 0, 0, 0, 0, err
+	}
+
+	log.Printf("[DEBUG] Загружено %d заказов для кабинета %s", len(state.Orders), cabinetKey)
+
+	ordersDivided = 0
+	itemsDivided = 0
+	labelsOrdered = 0
+	labelsDownloaded = 0
+
+	for _, order := range state.Orders {
+		log.Printf("[DEBUG] Заказ %s: is_divided=%v, shipments=%d",
+			order.PostingNumber, order.IsDivided, len(order.Shipments))
+
+		if !order.IsDivided {
+			continue
+		}
+
+		ordersDivided++
+
+		for _, product := range order.Products {
+			itemsDivided += product.Quantity
+		}
+
+		for _, shipment := range order.Shipments {
+			if shipment.Label.IsOrdered {
+				labelsOrdered++
+			}
+			if shipment.Label.IsDownloaded {
+				labelsDownloaded++
+			}
+		}
+	}
+
+	log.Printf("[INFO] Статистика для %s: заказов=%d, товаров=%d, этикеток заказано=%d, скачано=%d",
+		cabinetKey, ordersDivided, itemsDivided, labelsOrdered, labelsDownloaded)
+
+	return ordersDivided, itemsDivided, labelsOrdered, labelsDownloaded, nil
 }
 
 // CheckFolderExists - проверяет существование папки для заказа в labels

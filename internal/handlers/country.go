@@ -18,14 +18,14 @@ func HandleGetCountries(w http.ResponseWriter, r *http.Request) {
 
 	cabinet := config.GetActiveConfig()
 	if cabinet.ClientID == "" || cabinet.APIKey == "" {
-		log.Printf("❌ Кабинет '%s' не настроен", cabinet.Name)
+		log.Printf("[ERROR] Кабинет '%s' не настроен", cabinet.Name)
 		http.Error(w, "Cabinet not configured", http.StatusServiceUnavailable)
 		return
 	}
 
 	countries, err := services.GetCountriesList(cabinet)
 	if err != nil {
-		log.Printf("❌ Ошибка получения списка стран: %v", err)
+		log.Printf("[ERROR] Ошибка получения списка стран: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -50,22 +50,83 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("❌ Ошибка декодирования запроса: %v", err)
+		log.Printf("[ERROR] Ошибка декодирования запроса: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	cabinet := config.GetActiveConfig()
 	if cabinet.ClientID == "" || cabinet.APIKey == "" {
-		log.Printf("❌ Кабинет '%s' не настроен", cabinet.Name)
+		log.Printf("[ERROR] Кабинет '%s' не настроен", cabinet.Name)
 		http.Error(w, "Cabinet not configured", http.StatusServiceUnavailable)
 		return
 	}
 
-	log.Printf("🌍 Установка страны %s для товара %d в заказе %s", req.CountryCode, req.ProductID, req.PostingNumber)
+	// Если product_id = 0 - ищем правильный
+	finalProductID := req.ProductID
+	if finalProductID == 0 {
+		log.Printf("🔍 Поиск product_id для заказа %s", req.PostingNumber)
 
-	if err := services.SetCountry(cabinet, req.PostingNumber, req.ProductID, req.CountryCode); err != nil {
-		log.Printf("❌ Ошибка установки страны: %v", err)
+		// Получаем заказы из состояния
+		state, err := services.LoadCabinetState(cabinet.Key)
+		if err == nil {
+			for _, order := range state.Orders {
+				if order.PostingNumber == req.PostingNumber {
+					for _, product := range order.Products {
+						// Ищем товар, которому требуется страна
+						if product.Requirements.IsCountryRequired {
+							// Используем product_id или sku
+							if product.ProductID != 0 {
+								finalProductID = product.ProductID
+							} else if product.SKU != 0 {
+								finalProductID = product.SKU
+							}
+							log.Printf("✅ Найден product_id=%d (sku=%d) для заказа %s", finalProductID, product.SKU, req.PostingNumber)
+							break
+						}
+					}
+					break
+				}
+			}
+		}
+
+		// Если не нашли в состоянии - пробуем получить из API
+		if finalProductID == 0 {
+			orders, err := services.GetAwaitingPackagingOrders(cabinet)
+			if err == nil {
+				for _, order := range orders {
+					if order.PostingNumber == req.PostingNumber {
+						for _, product := range order.Products {
+							if product.IsCountryRequired {
+								if product.ProductID != 0 {
+									finalProductID = product.ProductID
+								} else if product.SKU != 0 {
+									finalProductID = product.SKU
+								}
+								log.Printf("✅ Найден product_id=%d из API для заказа %s", finalProductID, req.PostingNumber)
+								break
+							}
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if finalProductID == 0 {
+		log.Printf("[ERROR] Не удалось найти product_id для заказа %s", req.PostingNumber)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "error",
+			"message": "Не удалось определить ID товара",
+		})
+		return
+	}
+
+	log.Printf("🌍 Установка страны %s для товара %d в заказе %s", req.CountryCode, finalProductID, req.PostingNumber)
+
+	if err := services.SetCountry(cabinet, req.PostingNumber, finalProductID, req.CountryCode); err != nil {
+		log.Printf("[ERROR] Ошибка установки страны: %v", err)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "error",
 			"message": err.Error(),
@@ -74,8 +135,8 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Если для товара требуется ГТД - отмечаем его как отсутствующее
-	if err := services.SetGTDAsAbsent(cabinet, req.PostingNumber, req.ProductID); err != nil {
-		log.Printf("⚠️ Ошибка отметки ГТД как отсутствующего: %v", err)
+	if err := services.SetGTDAsAbsent(cabinet, req.PostingNumber, finalProductID); err != nil {
+		log.Printf("[WARNING] Ошибка отметки ГТД как отсутствующего: %v", err)
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
