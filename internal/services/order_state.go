@@ -18,7 +18,7 @@ import (
 
 var stateMutex sync.Mutex
 
-// GetOrdersFilePath - возвращает путь к файлу состояния для конкретного кабинета (экспортируемая)
+// GetOrdersFilePath - возвращает путь к файлу состояния для конкретного кабинета
 func GetOrdersFilePath(cabinetKey string) string {
 	ordersPath := config.GetOrdersPath()
 	os.MkdirAll(ordersPath, 0755)
@@ -30,7 +30,11 @@ func GetOrdersFilePath(cabinetKey string) string {
 func LoadCabinetState(cabinetKey string) (*models.CabinetState, error) {
 	stateMutex.Lock()
 	defer stateMutex.Unlock()
+	return loadCabinetStateUnlocked(cabinetKey)
+}
 
+// loadCabinetStateUnlocked - загружает состояние без блокировки (используется внутри с мутексом)
+func loadCabinetStateUnlocked(cabinetKey string) (*models.CabinetState, error) {
 	filePath := GetOrdersFilePath(cabinetKey)
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -59,7 +63,11 @@ func LoadCabinetState(cabinetKey string) (*models.CabinetState, error) {
 func SaveCabinetState(state *models.CabinetState) error {
 	stateMutex.Lock()
 	defer stateMutex.Unlock()
+	return saveCabinetStateUnlocked(state)
+}
 
+// saveCabinetStateUnlocked - сохраняет состояние без блокировки (используется внутри с мутексом)
+func saveCabinetStateUnlocked(state *models.CabinetState) error {
 	filePath := GetOrdersFilePath(state.CabinetKey)
 	state.LastUpdated = time.Now()
 
@@ -77,7 +85,10 @@ func SaveCabinetState(state *models.CabinetState) error {
 
 // GetTodayStats - возвращает статистику из текущего файла состояния
 func GetTodayStats(cabinetKey string) (ordersDivided, itemsDivided, labelsOrdered, labelsDownloaded int, err error) {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		log.Printf("[ERROR] Ошибка загрузки состояния для %s: %v", cabinetKey, err)
 		return 0, 0, 0, 0, err
@@ -91,9 +102,6 @@ func GetTodayStats(cabinetKey string) (ordersDivided, itemsDivided, labelsOrdere
 	labelsDownloaded = 0
 
 	for _, order := range state.Orders {
-		log.Printf("[DEBUG] Заказ %s: is_divided=%v, shipments=%d",
-			order.PostingNumber, order.IsDivided, len(order.Shipments))
-
 		if !order.IsDivided {
 			continue
 		}
@@ -158,7 +166,10 @@ func truncateString(s string, maxLen int) string {
 
 // UpdateOrders - обновляет список заказов
 func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		return err
 	}
@@ -208,19 +219,27 @@ func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error
 	}
 
 	state.Orders = updatedOrders
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // UpdateOrderAfterShip - обновляет состояние заказа после разделения
 func UpdateOrderAfterShip(cabinetKey, postingNumber string, shipments []string, productIDs []int64, needLabels int) error {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	log.Printf("[DEBUG] UpdateOrderAfterShip: cabinet=%s, posting=%s, shipments=%d", cabinetKey, postingNumber, len(shipments))
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
+		log.Printf("[ERROR] UpdateOrderAfterShip: ошибка загрузки состояния: %v", err)
 		return err
 	}
 
 	found := false
 	for i := range state.Orders {
 		if state.Orders[i].PostingNumber == postingNumber {
+			log.Printf("[DEBUG] UpdateOrderAfterShip: найден заказ %s в состоянии, is_divided=%v", postingNumber, state.Orders[i].IsDivided)
+
 			state.Orders[i].IsReadyForSplit = false
 			state.Orders[i].IsDivided = true
 
@@ -241,21 +260,32 @@ func UpdateOrderAfterShip(cabinetKey, postingNumber string, shipments []string, 
 
 			state.Orders[i].LabelsStatus = needLabels
 			found = true
-			log.Printf("[INFO] Заказ %s разделен на %d отправлений", postingNumber, len(shipments))
+			log.Printf("[INFO] Заказ %s разделен на %d отправлений, is_divided=true, labels_status=%d",
+				postingNumber, len(shipments), needLabels)
 			break
 		}
 	}
 
 	if !found {
+		log.Printf("[ERROR] UpdateOrderAfterShip: заказ %s НЕ НАЙДЕН в состоянии", postingNumber)
 		return fmt.Errorf("заказ %s не найден в состоянии", postingNumber)
 	}
 
-	return SaveCabinetState(state)
+	if err := saveCabinetStateUnlocked(state); err != nil {
+		log.Printf("[ERROR] UpdateOrderAfterShip: ошибка сохранения состояния: %v", err)
+		return err
+	}
+
+	log.Printf("[DEBUG] UpdateOrderAfterShip: состояние успешно сохранено для заказа %s", postingNumber)
+	return nil
 }
 
 // UpdateOrderLabel - обновляет состояние этикетки для подзаказа
 func UpdateOrderLabel(cabinetKey, postingNumber string, taskID int64, isOrdered bool, filePath string) error {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		return err
 	}
@@ -284,12 +314,15 @@ func UpdateOrderLabel(cabinetKey, postingNumber string, taskID int64, isOrdered 
 		return fmt.Errorf("подзаказ %s не найден в состоянии", postingNumber)
 	}
 
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // AddOrderError - добавляет ошибку к заказу
 func AddOrderError(cabinetKey, postingNumber, operation, errorMsg string) error {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		return err
 	}
@@ -307,12 +340,15 @@ func AddOrderError(cabinetKey, postingNumber, operation, errorMsg string) error 
 		}
 	}
 
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // GetOrderState - возвращает состояние конкретного заказа
 func GetOrderState(cabinetKey, postingNumber string) (*models.OrderState, error) {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +364,10 @@ func GetOrderState(cabinetKey, postingNumber string) (*models.OrderState, error)
 
 // UpdateCountryStatus - обновляет статус страны в состоянии
 func UpdateCountryStatus(cabinetKey, postingNumber string, productID int64, countryCode string) error {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		return err
 	}
@@ -348,12 +387,15 @@ func UpdateCountryStatus(cabinetKey, postingNumber string, productID int64, coun
 		}
 	}
 
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // UpdateGTDStatus - обновляет статус ГТД в состоянии
 func UpdateGTDStatus(cabinetKey, postingNumber string, productID int64) error {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		return err
 	}
@@ -370,12 +412,15 @@ func UpdateGTDStatus(cabinetKey, postingNumber string, productID int64) error {
 		}
 	}
 
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // UpdateMarkingStatus - обновляет статус маркировки в состоянии
 func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, codes []string) error {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		return err
 	}
@@ -404,12 +449,15 @@ func UpdateMarkingStatus(cabinetKey, postingNumber string, productID int64, code
 		log.Printf("[WARNING] Товар %d не найден в заказе %s для обновления маркировки", productID, postingNumber)
 	}
 
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // UpdateMarkingStatusFromAPI - обновляет статус маркировки из API
 func UpdateMarkingStatusFromAPI(cabinetKey, postingNumber string, markingStatus map[int64]bool) error {
-	state, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinetKey)
 	if err != nil {
 		return err
 	}
@@ -458,17 +506,23 @@ func UpdateMarkingStatusFromAPI(cabinetKey, postingNumber string, markingStatus 
 		log.Printf("[INFO] Статус маркировки обновлен для заказа %s", postingNumber)
 	}
 
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // processPendingLabels - обрабатывает заказы с labels_status = 1
 func processPendingLabels() error {
+	// Небольшая задержка перед началом обработки
+	time.Sleep(2 * time.Second)
+
 	cabinet := config.GetActiveConfig()
 	if cabinet == nil {
 		return fmt.Errorf("активный кабинет не найден")
 	}
 
-	state, err := LoadCabinetState(cabinet.Key)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinet.Key)
 	if err != nil {
 		return err
 	}
@@ -543,17 +597,23 @@ func processPendingLabels() error {
 		log.Println("[INFO] Нет заказов с labels_status=1")
 	}
 
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // processPendingDownloads - обрабатывает заказы с labels_status = 2
 func processPendingDownloads() error {
+	// Небольшая задержка перед началом обработки
+	time.Sleep(2 * time.Second)
+
 	cabinet := config.GetActiveConfig()
 	if cabinet == nil {
 		return fmt.Errorf("активный кабинет не найден")
 	}
 
-	state, err := LoadCabinetState(cabinet.Key)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	state, err := loadCabinetStateUnlocked(cabinet.Key)
 	if err != nil {
 		return err
 	}
@@ -650,7 +710,7 @@ func processPendingDownloads() error {
 		log.Println("[INFO] Нет заказов с labels_status=2")
 	}
 
-	return SaveCabinetState(state)
+	return saveCabinetStateUnlocked(state)
 }
 
 // processReadyForSplitOrders - обрабатывает заказы с is_ready_for_split = true для ВСЕХ кабинетов
@@ -666,8 +726,10 @@ func processReadyForSplitOrders() error {
 			continue
 		}
 
-		state, err := LoadCabinetState(key)
+		stateMutex.Lock()
+		state, err := loadCabinetStateUnlocked(key)
 		if err != nil {
+			stateMutex.Unlock()
 			log.Printf("[WARNING] Авто-разделение: ошибка загрузки состояния для кабинета %s: %v", key, err)
 			continue
 		}
@@ -691,6 +753,14 @@ func processReadyForSplitOrders() error {
 			}
 
 			if !needsMarking {
+				// Сохраняем состояние перед разделением
+				if err := saveCabinetStateUnlocked(state); err != nil {
+					stateMutex.Unlock()
+					log.Printf("[ERROR] Авто-разделение [%s]: ошибка сохранения состояния: %v", key, err)
+					return err
+				}
+				stateMutex.Unlock()
+
 				if err := autoSplitOrder(key, order); err != nil {
 					log.Printf("[ERROR] Авто-разделение [%s]: ошибка разделения заказа %s: %v", key, order.PostingNumber, err)
 					continue
@@ -704,7 +774,8 @@ func processReadyForSplitOrders() error {
 				continue
 			}
 
-			freshState, _ := LoadCabinetState(key)
+			// Перезагружаем состояние
+			freshState, _ := loadCabinetStateUnlocked(key)
 			var freshOrder *models.OrderState
 			for j := range freshState.Orders {
 				if freshState.Orders[j].PostingNumber == order.PostingNumber {
@@ -726,6 +797,14 @@ func processReadyForSplitOrders() error {
 			}
 
 			if allMarkingCompleted {
+				// Сохраняем состояние перед разделением
+				if err := saveCabinetStateUnlocked(freshState); err != nil {
+					stateMutex.Unlock()
+					log.Printf("[ERROR] Авто-разделение [%s]: ошибка сохранения состояния: %v", key, err)
+					return err
+				}
+				stateMutex.Unlock()
+
 				if err := autoSplitOrder(key, freshOrder); err != nil {
 					log.Printf("[ERROR] Авто-разделение [%s]: ошибка разделения заказа %s: %v", key, freshOrder.PostingNumber, err)
 					continue
@@ -733,6 +812,7 @@ func processReadyForSplitOrders() error {
 				processed++
 			} else {
 				log.Printf("[INFO] Авто-разделение [%s]: заказ %s ожидает маркировки", key, order.PostingNumber)
+				stateMutex.Unlock()
 			}
 		}
 
@@ -740,6 +820,7 @@ func processReadyForSplitOrders() error {
 			log.Printf("[INFO] Авто-разделение [%s]: обработано %d заказов", key, processed)
 			totalProcessed += processed
 		}
+		stateMutex.Unlock()
 	}
 
 	if totalProcessed > 0 {
@@ -911,7 +992,10 @@ func processMarkingForOrder(cabinetKey string, order *models.OrderState) error {
 		return fmt.Errorf("не все маркировки добавлены для заказа %s", order.PostingNumber)
 	}
 
-	fullState, err := LoadCabinetState(cabinetKey)
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+
+	fullState, err := loadCabinetStateUnlocked(cabinetKey)
 	if err == nil {
 		for i := range fullState.Orders {
 			if fullState.Orders[i].PostingNumber == order.PostingNumber {
@@ -919,7 +1003,7 @@ func processMarkingForOrder(cabinetKey string, order *models.OrderState) error {
 				break
 			}
 		}
-		SaveCabinetState(fullState)
+		saveCabinetStateUnlocked(fullState)
 	}
 
 	if len(linesToRemove) > 0 && len(filePaths) > 0 {
@@ -931,9 +1015,9 @@ func processMarkingForOrder(cabinetKey string, order *models.OrderState) error {
 					shouldRemove = true
 					break
 				}
-			}
-			if !shouldRemove {
-				newLines = append(newLines, line)
+				if !shouldRemove {
+					newLines = append(newLines, line)
+				}
 			}
 		}
 

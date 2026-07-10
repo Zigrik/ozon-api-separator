@@ -32,15 +32,16 @@ func getLocalIP() string {
 }
 
 func runApp() {
-	// Инициализируем логгер
+	// Сначала загружаем конфигурацию (она создает папки)
+	if err := config.LoadConfig(); err != nil {
+		log.Fatalf("[ERROR] Ошибка конфигурации: %v", err)
+	}
+
+	// Теперь инициализируем логгер (пути уже загружены)
 	if err := services.InitLogger(); err != nil {
 		log.Printf("[WARNING] Ошибка инициализации логгера: %v", err)
 	}
 	defer services.CloseLogger()
-
-	if err := config.LoadConfig(); err != nil {
-		log.Fatalf("[ERROR] Ошибка конфигурации: %v", err)
-	}
 
 	if err := config.LoadMarkingCodes(); err != nil {
 		log.Printf("[WARNING] Ошибка загрузки кодов маркировки: %v", err)
@@ -66,7 +67,7 @@ func runApp() {
 	// API без авторизации
 	http.HandleFunc("/api/check-password", handlers.HandleCheckPassword)
 	http.HandleFunc("/api/orders/stats", handlers.HandleGetStats)
-	http.HandleFunc("/api/auto-mode/global-status", handlers.HandleGlobalAutoModeStatus) // <-- ДОЛЖНО БЫТЬ
+	http.HandleFunc("/api/auto-mode/global-status", handlers.HandleGlobalAutoModeStatus)
 	http.HandleFunc("/api/settings", handlers.HandleGetSettings)
 
 	// API с авторизацией
@@ -134,7 +135,7 @@ func main() {
 	)
 
 	if !result.Valid {
-		log.Printf("[INFO] Лицензионная заглушка")
+		log.Fatal("[ERROR] Неверный ключ лицензии")
 	}
 
 	log.Printf("[INFO] Лицензия активна. Компания: %s", result.Company)

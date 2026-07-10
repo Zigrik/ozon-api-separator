@@ -32,6 +32,8 @@ func labelWorker() {
 
 		case 0:
 			log.Println("[INFO] Ручной режим: проверка заказов на заказ этикеток")
+			// Небольшая задержка перед обработкой
+			time.Sleep(2 * time.Second)
 			if err := processPendingLabels(); err != nil {
 				log.Printf("[ERROR] Ошибка при заказе этикеток: %v", err)
 			}
@@ -63,6 +65,7 @@ func downloadWorker() {
 
 		case 0:
 			log.Println("[INFO] Ручной режим: проверка заказов на скачивание этикеток")
+			// Небольшая задержка перед обработкой
 			time.Sleep(3 * time.Second)
 			if err := processPendingDownloads(); err != nil {
 				log.Printf("[ERROR] Ошибка при скачивании этикеток: %v", err)

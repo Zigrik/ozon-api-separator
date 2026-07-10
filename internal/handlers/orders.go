@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"ozon-api-separator/internal/config"
 	"ozon-api-separator/internal/services"
@@ -235,6 +236,31 @@ func shipOrders(w http.ResponseWriter, r *http.Request, needLabels int, wakeWork
 		log.Printf("[INFO] Разделение и заказ этикеток завершены: успешно %d, ошибок %d", successCount, errorCount)
 	} else {
 		log.Printf("[INFO] Разделение завершено: успешно %d, ошибок %d", successCount, errorCount)
+	}
+
+	// Если это режим "Разделить и скачать этикетки" - запускаем цепочку с задержками
+	if needLabels == 1 && wakeWorker {
+		log.Printf("[INFO] Запуск цепочки заказа и скачивания этикеток с задержками...")
+
+		// Запускаем в отдельной горутине, чтобы не блокировать ответ
+		go func() {
+			// Ждем 10 секунд после разделения
+			log.Printf("[INFO] Ожидание 10 секунд перед заказом этикеток...")
+			time.Sleep(10 * time.Second)
+
+			// Заказываем этикетки
+			log.Printf("[INFO] Заказ этикеток...")
+			services.WakeLabelWorker()
+
+			// Ждем 5 секунд между заказом и скачиванием
+			time.Sleep(5 * time.Second)
+
+			// Запускаем скачивание
+			log.Printf("[INFO] Скачивание этикеток...")
+			services.WakeDownloadWorker()
+		}()
+
+		log.Printf("[INFO] Цепочка заказа и скачивания этикеток запущена в фоне")
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
