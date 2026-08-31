@@ -65,7 +65,7 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 	// Если product_id = 0 - ищем правильный
 	finalProductID := req.ProductID
 	if finalProductID == 0 {
-		log.Printf("🔍 Поиск product_id для заказа %s", req.PostingNumber)
+		log.Printf("[DEBUG] Поиск product_id для заказа %s", req.PostingNumber)
 
 		// Получаем заказы из состояния
 		state, err := services.LoadCabinetState(cabinet.Key)
@@ -81,7 +81,7 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 							} else if product.SKU != 0 {
 								finalProductID = product.SKU
 							}
-							log.Printf("✅ Найден product_id=%d (sku=%d) для заказа %s", finalProductID, product.SKU, req.PostingNumber)
+							log.Printf("[INFO] Найден product_id=%d (sku=%d) для заказа %s", finalProductID, product.SKU, req.PostingNumber)
 							break
 						}
 					}
@@ -92,7 +92,7 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 
 		// Если не нашли в состоянии - пробуем получить из API
 		if finalProductID == 0 {
-			orders, err := services.GetAwaitingPackagingOrders(cabinet)
+			orders, err := services.GetAwaitingPackagingOrders(cabinet, []int64{})
 			if err == nil {
 				for _, order := range orders {
 					if order.PostingNumber == req.PostingNumber {
@@ -103,7 +103,7 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 								} else if product.SKU != 0 {
 									finalProductID = product.SKU
 								}
-								log.Printf("✅ Найден product_id=%d из API для заказа %s", finalProductID, req.PostingNumber)
+								log.Printf("[INFO] Найден product_id=%d из API для заказа %s", finalProductID, req.PostingNumber)
 								break
 							}
 						}
@@ -123,7 +123,7 @@ func HandleSetCountry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("🌍 Установка страны %s для товара %d в заказе %s", req.CountryCode, finalProductID, req.PostingNumber)
+	log.Printf("[INFO] Установка страны %s для товара %d в заказе %s", req.CountryCode, finalProductID, req.PostingNumber)
 
 	if err := services.SetCountry(cabinet, req.PostingNumber, finalProductID, req.CountryCode); err != nil {
 		log.Printf("[ERROR] Ошибка установки страны: %v", err)

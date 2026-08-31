@@ -21,7 +21,7 @@ func HandleGetAvailableCodes(w http.ResponseWriter, r *http.Request) {
 	count := len(config.MarkingCodes)
 	config.CodesMutex.Unlock()
 
-	log.Printf("📊 Запрос количества кодов: %d", count)
+	log.Printf("[INFO] Запрос количества кодов: %d", count)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -76,7 +76,7 @@ func HandleReloadCodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := config.LoadMarkingCodes(); err != nil {
-		log.Printf("❌ Ошибка перезагрузки кодов: %v", err)
+		log.Printf("[ERROR] Ошибка перезагрузки кодов: %v", err)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "error",
 			"message": err.Error(),
@@ -88,7 +88,7 @@ func HandleReloadCodes(w http.ResponseWriter, r *http.Request) {
 	count := len(config.MarkingCodes)
 	config.CodesMutex.Unlock()
 
-	log.Printf("✅ Коды маркировки перезагружены: %d", count)
+	log.Printf("[INFO] Коды маркировки перезагружены: %d", count)
 
 	if count > 0 {
 		config.CodesMutex.Lock()
@@ -97,7 +97,7 @@ func HandleReloadCodes(w http.ResponseWriter, r *http.Request) {
 		if len(sample) > 5 {
 			sample = sample[:5]
 		}
-		log.Printf("📋 Пример кодов: %v", sample)
+		log.Printf("[DEBUG] Пример кодов: %v", sample)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -110,7 +110,7 @@ func HandleReloadCodes(w http.ResponseWriter, r *http.Request) {
 
 // HandleAddMarkings - обработчик добавления маркировки
 func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
-	log.Printf("🔥 HandleAddMarkings вызван")
+	log.Printf("[DEBUG] HandleAddMarkings вызван")
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -126,37 +126,39 @@ func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("❌ Ошибка декодирования запроса: %v", err)
+		log.Printf("[ERROR] Ошибка декодирования запроса: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("📥 Запрос на добавление маркировки: posting=%s, product_id=%d, offer_id=%s, qty=%d",
+	log.Printf("[INFO] Запрос на добавление маркировки: posting=%s, product_id=%d, offer_id=%s, qty=%d",
 		req.PostingNumber, req.ProductID, req.OfferID, req.Quantity)
 
 	cabinet := config.GetActiveConfig()
 	if cabinet.ClientID == "" || cabinet.APIKey == "" {
-		log.Printf("❌ Кабинет '%s' не настроен", cabinet.Name)
+		log.Printf("[ERROR] Кабинет '%s' не настроен", cabinet.Name)
 		http.Error(w, "Cabinet not configured", http.StatusServiceUnavailable)
 		return
 	}
 
 	// Если product_id = 0 или похож на SKU (большое число), ищем правильный
-	if req.ProductID == 0 || req.ProductID > 1000000000 {
-		log.Printf("🔍 product_id = %d, ищем правильный ID...", req.ProductID)
+	finalProductID := req.ProductID
+	if finalProductID == 0 || finalProductID > 1000000000 {
+		log.Printf("[DEBUG] product_id = %d, ищем правильный ID...", finalProductID)
 
-		orders, err := services.GetAwaitingPackagingOrders(cabinet)
+		// Сначала ищем в состоянии
+		state, err := services.LoadCabinetState(cabinet.Key)
 		if err == nil {
-			for _, order := range orders {
+			for _, order := range state.Orders {
 				if order.PostingNumber == req.PostingNumber {
-					for _, p := range order.Products {
-						if p.OfferID == req.OfferID || p.SKU == req.ProductID {
-							if p.ProductID != 0 {
-								req.ProductID = p.ProductID
-								log.Printf("✅ Найден правильный product_id: %d", req.ProductID)
-							} else if p.SKU != 0 {
-								req.ProductID = p.SKU
-								log.Printf("⚠️ product_id = 0, используем SKU: %d", req.ProductID)
+					for _, product := range order.Products {
+						if product.OfferID == req.OfferID || product.SKU == req.ProductID {
+							if product.ProductID != 0 {
+								finalProductID = product.ProductID
+								log.Printf("[INFO] Найден правильный product_id: %d", finalProductID)
+							} else if product.SKU != 0 {
+								finalProductID = product.SKU
+								log.Printf("[INFO] product_id = 0, используем SKU: %d", finalProductID)
 							}
 							break
 						}
@@ -165,10 +167,34 @@ func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+
+		// Если не нашли - ищем в API
+		if finalProductID == 0 {
+			orders, err := services.GetAwaitingPackagingOrders(cabinet, []int64{})
+			if err == nil {
+				for _, order := range orders {
+					if order.PostingNumber == req.PostingNumber {
+						for _, product := range order.Products {
+							if product.OfferID == req.OfferID || product.SKU == req.ProductID {
+								if product.ProductID != 0 {
+									finalProductID = product.ProductID
+									log.Printf("[INFO] Найден product_id из API: %d", finalProductID)
+								} else if product.SKU != 0 {
+									finalProductID = product.SKU
+									log.Printf("[INFO] Используем SKU из API: %d", finalProductID)
+								}
+								break
+							}
+						}
+						break
+					}
+				}
+			}
+		}
 	}
 
-	if req.ProductID <= 0 {
-		log.Printf("❌ Невалидный ProductID: %d, OfferID: %s", req.ProductID, req.OfferID)
+	if finalProductID <= 0 {
+		log.Printf("[ERROR] Невалидный ProductID: %d, OfferID: %s", finalProductID, req.OfferID)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "error",
 			"message": "Не удалось определить ID товара",
@@ -184,11 +210,11 @@ func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("🏷️ Добавление маркировки для товара %d (offer_id: %s) в заказе %s (количество: %d)",
-		req.ProductID, req.OfferID, req.PostingNumber, req.Quantity)
+	log.Printf("[INFO] Добавление маркировки для товара %d (offer_id: %s) в заказе %s (количество: %d)",
+		finalProductID, req.OfferID, req.PostingNumber, req.Quantity)
 
-	if err := services.AddMarkingsForOrder(cabinet, req.PostingNumber, req.ProductID, req.Quantity, req.Codes); err != nil {
-		log.Printf("❌ Ошибка добавления маркировки: %v", err)
+	if err := services.AddMarkingsForOrder(cabinet, req.PostingNumber, finalProductID, req.Quantity, req.Codes); err != nil {
+		log.Printf("[ERROR] Ошибка добавления маркировки: %v", err)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "error",
 			"message": err.Error(),
@@ -197,14 +223,14 @@ func HandleAddMarkings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Обновляем состояние маркировки в JSON
-	if err := services.UpdateMarkingStatus(cabinet.Key, req.PostingNumber, req.ProductID, req.Codes); err != nil {
-		log.Printf("⚠️ Ошибка обновления состояния маркировки: %v", err)
+	if err := services.UpdateMarkingStatus(cabinet.Key, req.PostingNumber, finalProductID, req.Codes); err != nil {
+		log.Printf("[WARNING] Ошибка обновления состояния маркировки: %v", err)
 	}
 
 	response := map[string]interface{}{
 		"status":  "ok",
 		"message": fmt.Sprintf("Добавлено %d кодов маркировки", req.Quantity),
 	}
-	log.Printf("📤 Ответ отправлен: %v", response)
+	log.Printf("[INFO] Ответ отправлен: %v", response)
 	json.NewEncoder(w).Encode(response)
 }

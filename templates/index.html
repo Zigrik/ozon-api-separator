@@ -9,6 +9,10 @@
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
 </head>
 <body data-cabinet="shinorama">
+    <input type="hidden" id="warehouseUnId" value="{{ .WarehouseUN }}">
+    <input type="hidden" id="warehouseRevId" value="{{ .WarehouseRev }}">
+    <input type="hidden" id="warehouseUnName" value="{{ .WarehouseUNName }}">
+    <input type="hidden" id="warehouseRevName" value="{{ .WarehouseRevName }}">
     <div class="container">
         <div class="auth-panel" id="authPanel">
             <div class="auth-form">
@@ -115,9 +119,19 @@
 
                 <div class="action-bar">
                     <div class="action-buttons">
-                        <button id="loadOrdersBtn" class="primary-btn">Загрузить заказы</button>
-                        <button id="splitOrdersBtn" class="split-btn">Разделить заказы</button>
-                        <button id="generateLabelsBtn" class="label-btn">Разделить и скачать этикетки</button>
+                        <div class="warehouse-filters">
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="filterWarehouseUn" checked>
+                                <span class="checkbox-label" style="background: #e8f5e9; padding: 2px 10px; border-radius: 4px;">Ун.</span>
+                            </label>
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="filterWarehouseRev" checked>
+                                <span class="checkbox-label" style="background: #e3f2fd; padding: 2px 10px; border-radius: 4px;">Рев.</span>
+                            </label>
+                        </div>
+                        <button id="loadOrdersBtn" class="primary-btn">📦 Загрузить заказы</button>
+                        <button id="splitOrdersBtn" class="split-btn">✂️ Разделить заказы</button>
+                        <button id="generateLabelsBtn" class="label-btn">🏷️ Разделить и скачать этикетки</button>
                     </div>
                 </div>
                 
@@ -128,6 +142,7 @@
                                 <tr>
                                     <th class="checkbox-cell"><input type="checkbox" id="selectAllLeft"></th>
                                     <th>Номер заказа</th>
+                                    <th class="warehouse-header">Склад</th>
                                     <th class="status-cell">Статус</th>
                                     <th>Товары</th>
                                     <th>Код товара</th>
@@ -140,7 +155,7 @@
                             <tfoot id="ordersFooter">
                                 <tr>
                                     <td class="checkbox-cell"><input type="checkbox" id="selectAllLeftBottom"></td>
-                                    <td colspan="6" style="text-align: left; padding: 8px;">
+                                    <td colspan="7" style="text-align: left; padding: 8px;">
                                         <div class="stats-panel" style="margin: 0; gap: 24px; background: transparent; padding: 0;">
                                             <span>Выделено (всего): <strong id="footerSelectedOrders">0</strong>(<strong id="footerTotalOrders">0</strong>) заказов</span>
                                             <span>Товаров: <strong id="footerSelectedProducts">0</strong>(<strong id="footerTotalProducts">0</strong>)</span>
@@ -153,9 +168,19 @@
                         </table>
                     </div>
                     <div class="action-buttons-bottom">
-                        <button id="loadOrdersBtnBottom" class="primary-btn">Загрузить заказы</button>
-                        <button id="splitOrdersBtnBottom" class="split-btn">Разделить заказы</button>
-                        <button id="generateLabelsBtnBottom" class="label-btn">Разделить и скачать этикетки</button>
+                        <div class="warehouse-filters">
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="filterWarehouseUnBottom" checked>
+                                <span class="checkbox-label" style="background: #e8f5e9; padding: 2px 10px; border-radius: 4px;">Ун.</span>
+                            </label>
+                            <label class="filter-checkbox">
+                                <input type="checkbox" id="filterWarehouseRevBottom" checked>
+                                <span class="checkbox-label" style="background: #e3f2fd; padding: 2px 10px; border-radius: 4px;">Рев.</span>
+                            </label>
+                        </div>
+                        <button id="loadOrdersBtnBottom" class="primary-btn">📦 Загрузить заказы</button>
+                        <button id="splitOrdersBtnBottom" class="split-btn">✂️ Разделить заказы</button>
+                        <button id="generateLabelsBtnBottom" class="label-btn">🏷️ Разделить и скачать этикетки</button>
                     </div>
                 </div>
             </div>
@@ -202,7 +227,7 @@
     <div id="toast" class="toast"></div>
 
     <div class="app-footer">
-        <span class="version">700-OZON Api Cabinet <strong>v1.0.3</strong></span>
+        <span class="version">700-OZON Api Cabinet <strong>v1.1.0</strong></span>
         <span class="slogan">Освобождаем от рутины.</span>
     </div>
 
@@ -225,6 +250,17 @@
         trecktrack: 'TreckTrack',
         sevenhundredshin: '700shin'
     };
+
+    // Получаем ID складов из скрытых полей (из .env)
+    const WAREHOUSE_UN = parseInt(document.getElementById('warehouseUnId')?.value || '0');
+    const WAREHOUSE_REV = parseInt(document.getElementById('warehouseRevId')?.value || '0');
+    const WAREHOUSE_UN_NAME = document.getElementById('warehouseUnName')?.value || 'Ун.';
+    const WAREHOUSE_REV_NAME = document.getElementById('warehouseRevName')?.value || 'Рев.';
+
+    console.log('📦 WAREHOUSE_UN:', WAREHOUSE_UN);
+    console.log('📦 WAREHOUSE_REV:', WAREHOUSE_REV);
+    console.log('📦 WAREHOUSE_UN_NAME:', WAREHOUSE_UN_NAME);
+    console.log('📦 WAREHOUSE_REV_NAME:', WAREHOUSE_REV_NAME);
 
     function showToast(msg, isErr = false) {
         const toast = document.getElementById('toast');
@@ -287,31 +323,11 @@
             headers['X-Auth-Token'] = authToken;
         }
         
-        // Для статистики - прямой запрос (без проверки на HTML)
-        if (url.includes('/api/orders/stats')) {
-            try {
-                const res = await fetch(url);
-                if (res.ok) {
-                    const data = await res.json();
-                    return data;
-                }
-            } catch (e) {
-                console.warn('Ошибка запроса статистики:', e);
-            }
-            return { status: 'ok', orders_divided: 0, items_divided: 0, labels_ordered: 0, labels_downloaded: 0 };
-        }
-        
         const res = await fetch(url, { ...opts, headers });
         
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('text/html')) {
             console.error('❌ API вернул HTML вместо JSON:', url);
-            if (url.includes('/api/auto-mode/global-status')) {
-                return { status: 'ok', enabled: false };
-            }
-            if (url.includes('/api/settings')) {
-                return { status: 'ok' };
-            }
             if (authToken) {
                 authToken = null;
                 localStorage.removeItem('authToken');
@@ -325,12 +341,6 @@
         }
         
         if (res.status === 401) {
-            if (url.includes('/api/auto-mode/global-status')) {
-                return { status: 'ok', enabled: false };
-            }
-            if (url.includes('/api/settings')) {
-                return { status: 'ok' };
-            }
             authToken = null;
             localStorage.removeItem('authToken');
             document.getElementById('mainContent').style.display = 'none';
@@ -354,6 +364,46 @@
         return res.json();
     }
 
+    // ==================== ФИЛЬТРЫ СКЛАДОВ ====================
+    function getWarehouseFilter() {
+        const filterUn = document.getElementById('filterWarehouseUn');
+        const filterRev = document.getElementById('filterWarehouseRev');
+        
+        // Если выбраны оба или не выбран ни один — все заказы
+        if ((filterUn.checked && filterRev.checked) || (!filterUn.checked && !filterRev.checked)) {
+            console.log('📦 Загружаем все заказы (без фильтра по складам)');
+            return [];
+        }
+        
+        // Иначе фильтруем по выбранным складам
+        const selected = [];
+        if (filterUn.checked && WAREHOUSE_UN) {
+            selected.push(WAREHOUSE_UN);
+        }
+        if (filterRev.checked && WAREHOUSE_REV) {
+            selected.push(WAREHOUSE_REV);
+        }
+        
+        console.log('📦 Выбранные склады для фильтрации:', selected);
+        return selected;
+    }
+
+    function getWarehouseName(warehouseId) {
+        // Приводим к числу для надежного сравнения
+        const id = Number(warehouseId);
+        if (id === WAREHOUSE_UN) return WAREHOUSE_UN_NAME;
+        if (id === WAREHOUSE_REV) return WAREHOUSE_REV_NAME;
+        return '—';
+    }
+
+    function getWarehouseClass(warehouseId) {
+        const id = Number(warehouseId);
+        if (id === WAREHOUSE_UN) return 'warehouse-un';
+        if (id === WAREHOUSE_REV) return 'warehouse-rev';
+        return 'warehouse-other';
+    }
+
+    // ==================== СТАТИСТИКА КАБИНЕТОВ ====================
     async function loadCabinetStats(cabinet) {
         try {
             console.log(`📊 Запрос статистики для ${cabinet}...`);
@@ -368,11 +418,6 @@
             }
         } catch (err) {
             console.error('Ошибка загрузки статистики для', cabinet, ':', err);
-            // Если ошибка - показываем 0
-            document.getElementById(`statOrders_${cabinet}`).textContent = 0;
-            document.getElementById(`statItems_${cabinet}`).textContent = 0;
-            document.getElementById(`statLabelsOrdered_${cabinet}`).textContent = 0;
-            document.getElementById(`statLabelsDownloaded_${cabinet}`).textContent = 0;
         }
     }
 
@@ -382,6 +427,7 @@
         }
     }
 
+    // ==================== АВТО-РЕЖИМ ====================
     async function loadAutoModeStatus() {
         try {
             const data = await apiRequest('/api/auto-mode/global-status');
@@ -392,7 +438,6 @@
             document.getElementById('autoModeStatusGlobal').style.color = enabled ? '#28a745' : '#dc3545';
         } catch (err) {
             console.warn('⚠️ Ошибка загрузки статуса авто-режима:', err.message);
-            // Если ошибка - просто показываем "выкл" по умолчанию
             document.getElementById('autoModeStatusGlobal').textContent = 'выкл';
             document.getElementById('autoModeStatusGlobal').style.color = '#dc3545';
         }
@@ -402,7 +447,15 @@
     async function loadOrders() {
         try {
             showToast('Загрузка...');
-            const data = await apiRequest('/api/orders');
+            
+            const warehouseIds = getWarehouseFilter();
+            
+            const data = await apiRequest('/api/orders', {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    warehouse_ids: warehouseIds 
+                })
+            });
             
             let ordersData = [];
             let cabinetName = '';
@@ -418,9 +471,11 @@
             
             orders = ordersData;
             
+            console.log(`📦 Загружено ${ordersData.length} заказов`);
+            
             const tbody = document.getElementById('ordersList');
             if (orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">Нет заказов, ожидающих сборки</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;">Нет заказов, ожидающих сборки</td></tr>';
             } else {
                 tbody.innerHTML = orders.map((order, i) => {
                     const hasIssues = order.products.some(p => {
@@ -448,10 +503,15 @@
                     if (isDivided) statusText = 'Разделён';
                     else if (isReadyForSplit) statusText = 'Готов к разделению';
                     
+                    const warehouseId = order.warehouse_id || 0;
+                    const warehouseName = getWarehouseName(warehouseId);
+                    const warehouseClass = getWarehouseClass(warehouseId);
+                    
                     return `
                         <tr class="${rowClass}" data-posting-number="${order.posting_number}">
                             <td class="checkbox-cell"><input type="checkbox" class="order-checkbox" data-posting-number="${order.posting_number}" data-idx="${i}" ${disabledAttr}></td>
                             <td class="posting-number">${escapeHtml(order.posting_number)}</td>
+                            <td class="warehouse-cell-container"><span class="warehouse-cell ${warehouseClass}">${escapeHtml(warehouseName)}</span></td>
                             <td class="status-cell">
                                 <span class="status-badge status-awaiting_packaging">
                                     ${statusText}
@@ -793,7 +853,6 @@
 
     // ==================== КНОПКИ ТОВАРОВ ====================
     function bindProductButtons() {
-        // Кнопки страны
         document.querySelectorAll('.country-warning').forEach(btn => {
             if (btn.dataset.bound === 'true') return;
             btn.addEventListener('click', async function(e) {
@@ -843,7 +902,6 @@
             btn.dataset.bound = 'true';
         });
         
-        // Кнопки маркировки
         document.querySelectorAll('.mark-warning').forEach(btn => {
             if (btn.dataset.bound === 'true') return;
             btn.addEventListener('click', async function(e) {
@@ -1141,6 +1199,7 @@
         }
     }
 
+    // ==================== АВТОРИЗАЦИЯ ====================
     async function checkPassword() {
         const pwd = document.getElementById('passwordInput').value;
         const errDiv = document.getElementById('authError');
@@ -1166,11 +1225,9 @@
             document.getElementById('authPanel').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
             showToast('Добро пожаловать!');
-            
-            // Загружаем статистику и заказы (авто-режим загружается внутри)
+            await loadAutoModeStatus();
             await loadAllStats();
             await loadOrders();
-            
         } catch (err) {
             errDiv.textContent = err.message;
             errDiv.style.display = 'block';
@@ -1351,6 +1408,20 @@
         document.getElementById('markingCancelBtn').onclick = closeAllModals;
         document.getElementById('countryConfirmBtn').onclick = setCountry;
         document.getElementById('countryCancelBtn').onclick = closeAllModals;
+        
+        // Синхронизация чекбоксов складов (верх и низ)
+        document.getElementById('filterWarehouseUn').addEventListener('change', function() {
+            document.getElementById('filterWarehouseUnBottom').checked = this.checked;
+        });
+        document.getElementById('filterWarehouseUnBottom').addEventListener('change', function() {
+            document.getElementById('filterWarehouseUn').checked = this.checked;
+        });
+        document.getElementById('filterWarehouseRev').addEventListener('change', function() {
+            document.getElementById('filterWarehouseRevBottom').checked = this.checked;
+        });
+        document.getElementById('filterWarehouseRevBottom').addEventListener('change', function() {
+            document.getElementById('filterWarehouseRev').checked = this.checked;
+        });
         
         document.getElementById('autoModeGlobal').addEventListener('change', async function(e) {
             const enabled = e.target.checked;

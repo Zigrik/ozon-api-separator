@@ -19,8 +19,10 @@ func ShipOrdersInternal(cabinet *models.CabinetConfig, ordersToShip []struct {
 }, wakeWorker bool) ([]map[string]interface{}, error) {
 	results := make([]map[string]interface{}, 0)
 
+	log.Printf("[DEBUG] ShipOrdersInternal: начало разделения %d заказов", len(ordersToShip))
+
 	// Получаем актуальные заказы для исправления product_id
-	orders, err := GetAwaitingPackagingOrders(cabinet)
+	orders, err := GetAwaitingPackagingOrders(cabinet, []int64{})
 	if err != nil {
 		log.Printf("[WARNING] Ошибка получения заказов для исправления product_id: %v", err)
 	}
@@ -33,6 +35,8 @@ func ShipOrdersInternal(cabinet *models.CabinetConfig, ordersToShip []struct {
 		result := map[string]interface{}{
 			"posting_number": orderReq.PostingNumber,
 		}
+
+		log.Printf("[DEBUG] ShipOrdersInternal: обработка заказа %s, продуктов %d", orderReq.PostingNumber, len(orderReq.Products))
 
 		packages := make([]models.ShipPackage, 0)
 		productIDs := make([]int64, 0)
@@ -103,10 +107,23 @@ func ShipOrdersInternal(cabinet *models.CabinetConfig, ordersToShip []struct {
 			continue
 		}
 
+		// Проверяем, что shipments не пустые
+		if len(shipments) == 0 {
+			log.Printf("[ERROR] ShipOrdersInternal: заказ %s разделен на 0 отправлений!", orderReq.PostingNumber)
+			result["status"] = "error"
+			result["error"] = "заказ разделен на 0 отправлений"
+			results = append(results, result)
+			continue
+		}
+
 		log.Printf("[INFO] Заказ %s разделён на %d отправлений", orderReq.PostingNumber, len(shipments))
 
 		if err := UpdateOrderAfterShip(cabinet.Key, orderReq.PostingNumber, shipments, productIDs, 1); err != nil {
-			log.Printf("[WARNING] Ошибка сохранения состояния после разделения: %v", err)
+			log.Printf("[ERROR] Ошибка сохранения состояния после разделения: %v", err)
+			result["status"] = "error"
+			result["error"] = fmt.Sprintf("ошибка сохранения состояния: %v", err)
+			results = append(results, result)
+			continue
 		}
 
 		if wakeWorker {

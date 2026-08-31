@@ -13,7 +13,7 @@ type CabinetConfig struct {
 	ClientID   string
 	APIKey     string
 	Key        string
-	LabelsPath string // Путь для этикеток и .txt файлов (уникальный для каждого кабинета)
+	LabelsPath string
 	Color      string
 	BgColor    string
 }
@@ -36,6 +36,20 @@ type Posting struct {
 	Requirements    *Requirements `json:"requirements,omitempty"`
 	IsFolderReady   bool          `json:"is_folder_ready"`
 	IsReadyForSplit bool          `json:"is_ready_for_split,omitempty"`
+	// v3 API — склад внутри delivery_method
+	DeliveryMethod  *DeliveryMethod `json:"delivery_method,omitempty"`
+	IntegrationType string          `json:"integration_type_flow,omitempty"`
+	// Заполняем из delivery_method для удобства
+	WarehouseID   int64  `json:"warehouse_id,omitempty"`
+	WarehouseName string `json:"warehouse_name,omitempty"`
+}
+
+// DeliveryMethod - структура метода доставки (содержит склад)
+type DeliveryMethod struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	WarehouseID int64  `json:"warehouse_id"`
+	Warehouse   string `json:"warehouse"`
 }
 
 type Product struct {
@@ -72,20 +86,37 @@ func (p *Product) GetPrice() float64 {
 	}
 }
 
-type PostingsListResponse struct {
-	Result struct {
-		Postings []Posting `json:"postings"`
-	} `json:"result"`
-}
-
-type PostingsFilter struct {
+// PostingsFilterV3 - структура фильтра для v3 API
+type PostingsFilterV3 struct {
+	Dir    string `json:"dir,omitempty"`
 	Filter struct {
-		Status     string     `json:"status,omitempty"`
-		CutoffFrom *time.Time `json:"cutoff_from,omitempty"`
-		CutoffTo   *time.Time `json:"cutoff_to,omitempty"`
+		Status           string     `json:"status,omitempty"`
+		CutoffFrom       *time.Time `json:"cutoff_from,omitempty"`
+		CutoffTo         *time.Time `json:"cutoff_to,omitempty"`
+		DeliveryMethodID []int64    `json:"delivery_method_id,omitempty"`
+		IsQuantum        bool       `json:"is_quantum,omitempty"`
+		ProviderID       []int64    `json:"provider_id,omitempty"`
+		WarehouseID      []int64    `json:"warehouse_id,omitempty"`
 	} `json:"filter"`
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
+	With   struct {
+		AnalyticsData bool `json:"analytics_data,omitempty"`
+		Barcodes      bool `json:"barcodes,omitempty"`
+		FinancialData bool `json:"financial_data,omitempty"`
+		LegalInfo     bool `json:"legal_info,omitempty"`
+		Translit      bool `json:"translit,omitempty"`
+	} `json:"with,omitempty"`
+}
+
+// PostingsListResponseV3 - структура ответа для v3 API
+type PostingsListResponseV3 struct {
+	Result struct {
+		Postings []Posting `json:"postings"`
+	} `json:"result"`
+	Count   int    `json:"count"`
+	HasNext bool   `json:"has_next"`
+	Cursor  string `json:"cursor,omitempty"`
 }
 
 // ============ МОДЕЛИ ДЛЯ РАЗДЕЛЕНИЯ ЗАКАЗОВ ============
@@ -146,6 +177,9 @@ type CabinetState struct {
 
 type OrderState struct {
 	PostingNumber   string          `json:"posting_number"`
+	WarehouseID     int64           `json:"warehouse_id,omitempty"`
+	WarehouseName   string          `json:"warehouse_name,omitempty"`
+	IntegrationType string          `json:"integration_type_flow,omitempty"`
 	IsReadyForSplit bool            `json:"is_ready_for_split"`
 	IsDivided       bool            `json:"is_divided"`
 	Products        []ProductState  `json:"products"`
@@ -231,8 +265,6 @@ type ExemplarCreateResponse struct {
 		} `json:"exemplars"`
 	} `json:"products"`
 }
-
-// ============ МОДЕЛИ ДЛЯ СТАТУСА МАРКИРОВКИ ============
 
 type ExemplarStatusRequest struct {
 	PostingNumber string `json:"posting_number"`

@@ -65,7 +65,6 @@ func downloadWorker() {
 
 		case 0:
 			log.Println("[INFO] Ручной режим: проверка заказов на скачивание этикеток")
-			// Небольшая задержка перед обработкой
 			time.Sleep(3 * time.Second)
 			if err := processPendingDownloads(); err != nil {
 				log.Printf("[ERROR] Ошибка при скачивании этикеток: %v", err)
@@ -100,7 +99,8 @@ func autoUpdateOrdersWorker() {
 					continue
 				}
 
-				orders, err := GetAwaitingPackagingOrders(cabinet)
+				// Получаем заказы для кабинета (без фильтра по складам)
+				orders, err := GetAwaitingPackagingOrders(cabinet, []int64{})
 				if err != nil {
 					log.Printf("[WARNING] Авто-обновление [%s]: ошибка загрузки заказов: %v", key, err)
 					continue

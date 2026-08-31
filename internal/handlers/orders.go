@@ -11,9 +11,14 @@ import (
 	"ozon-api-separator/internal/services"
 )
 
+// OrdersRequest - структура запроса для получения заказов
+type OrdersRequest struct {
+	WarehouseIDs []int64 `json:"warehouse_ids"`
+}
+
 // HandleGetOrders - обработчик получения списка заказов
 func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -25,9 +30,16 @@ func HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[INFO] Загрузка заказов для кабинета '%s'", cabinet.Name)
+	// Читаем тело запроса с фильтрами по складам
+	var req OrdersRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// Если тело пустое или ошибка — игнорируем, используем пустой фильтр
+		req.WarehouseIDs = []int64{}
+	}
 
-	orders, err := services.GetAwaitingPackagingOrders(cabinet)
+	log.Printf("[INFO] Загрузка заказов для кабинета '%s', фильтр по складам: %v", cabinet.Name, req.WarehouseIDs)
+
+	orders, err := services.GetAwaitingPackagingOrders(cabinet, req.WarehouseIDs)
 	if err != nil {
 		log.Printf("[ERROR] Ошибка загрузки заказов: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -315,7 +327,6 @@ func HandleGetStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверяем существование файла
 	filePath := services.GetOrdersFilePath(cabinetKey)
 	log.Printf("[DEBUG] Путь к файлу статистики: %s", filePath)
 
@@ -331,7 +342,6 @@ func HandleGetStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем статистику
 	ordersDivided, itemsDivided, labelsOrdered, labelsDownloaded, err := services.GetTodayStats(cabinetKey)
 	if err != nil {
 		log.Printf("[ERROR] Ошибка получения статистики: %v", err)

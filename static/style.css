@@ -686,6 +686,84 @@ input:checked + .slider-small:before {
 }
 .label-status-close:hover { color: #333; }
 
+/* ============ ФИЛЬТРЫ СКЛАДОВ ============ */
+.warehouse-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f8f9fa;
+    padding: 4px 12px;
+    border-radius: 6px;
+}
+
+.filter-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    user-select: none;
+}
+
+.filter-checkbox input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.checkbox-label {
+    font-weight: 500;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.filter-hint {
+    font-size: 12px;
+    color: #999;
+}
+
+/* ============ ЯЧЕЙКИ СКЛАДОВ ============ */
+.warehouse-cell {
+    text-align: center;
+    font-weight: 500;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    display: inline-block;
+    min-width: 40px;
+}
+
+/* Для контейнера ячейки таблицы, чтобы выравнивание было по центру */
+.warehouse-cell-container {
+    text-align: center;
+    vertical-align: middle;
+    padding: 2px 4px;
+}
+
+.warehouse-un {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+
+.warehouse-rev {
+    background-color: #e3f2fd;
+    color: #1565c0;
+}
+
+.warehouse-other {
+    background-color: #f5f5f5;
+    color: #999;
+}
+
+.warehouse-header {
+    text-align: center;
+    width: 70px;
+    min-width: 70px;
+    max-width: 70px;
+}
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }

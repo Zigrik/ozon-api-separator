@@ -33,7 +33,7 @@ func LoadCabinetState(cabinetKey string) (*models.CabinetState, error) {
 	return loadCabinetStateUnlocked(cabinetKey)
 }
 
-// loadCabinetStateUnlocked - загружает состояние без блокировки (используется внутри с мутексом)
+// loadCabinetStateUnlocked - загружает состояние без блокировки
 func loadCabinetStateUnlocked(cabinetKey string) (*models.CabinetState, error) {
 	filePath := GetOrdersFilePath(cabinetKey)
 
@@ -66,7 +66,7 @@ func SaveCabinetState(state *models.CabinetState) error {
 	return saveCabinetStateUnlocked(state)
 }
 
-// saveCabinetStateUnlocked - сохраняет состояние без блокировки (используется внутри с мутексом)
+// saveCabinetStateUnlocked - сохраняет состояние без блокировки
 func saveCabinetStateUnlocked(state *models.CabinetState) error {
 	filePath := GetOrdersFilePath(state.CabinetKey)
 	state.LastUpdated = time.Now()
@@ -93,8 +93,6 @@ func GetTodayStats(cabinetKey string) (ordersDivided, itemsDivided, labelsOrdere
 		log.Printf("[ERROR] Ошибка загрузки состояния для %s: %v", cabinetKey, err)
 		return 0, 0, 0, 0, err
 	}
-
-	log.Printf("[DEBUG] Загружено %d заказов для кабинета %s", len(state.Orders), cabinetKey)
 
 	ordersDivided = 0
 	itemsDivided = 0
@@ -189,23 +187,43 @@ func UpdateOrders(cabinetKey, cabinetName string, orders []models.Posting) error
 
 	updatedOrders := make([]models.OrderState, 0)
 
+	// Получаем ID складов из .env
+	warehouseUN := config.GetWarehouseUN()
+	warehouseRev := config.GetWarehouseREV()
+
 	for _, order := range orders {
 		var orderState models.OrderState
+
+		// Определяем отображаемое название склада
+		warehouseDisplayName := ""
+		if order.WarehouseID == warehouseUN {
+			warehouseDisplayName = "Ун."
+		} else if order.WarehouseID == warehouseRev {
+			warehouseDisplayName = "Рев."
+		}
 
 		if existing, exists := existingOrdersMap[order.PostingNumber]; exists {
 			orderState = *existing
 			orderState.Products = convertProducts(order.Products)
 			orderState.IsReadyForSplit = CheckFolderExists(cabinetKey, order.PostingNumber) || orderState.IsReadyForSplit
+			// Обновляем данные склада
+			orderState.WarehouseID = order.WarehouseID
+			orderState.WarehouseName = warehouseDisplayName
+			orderState.IntegrationType = order.IntegrationType
 		} else {
 			orderState = models.OrderState{
 				PostingNumber:   order.PostingNumber,
+				WarehouseID:     order.WarehouseID,
+				WarehouseName:   warehouseDisplayName,
+				IntegrationType: order.IntegrationType,
 				IsReadyForSplit: CheckFolderExists(cabinetKey, order.PostingNumber),
 				IsDivided:       false,
 				Products:        convertProducts(order.Products),
 				Shipments:       make([]models.ShipmentState, 0),
 				Errors:          make([]models.OrderError, 0),
 			}
-			log.Printf("[INFO] Новый заказ: %s (кабинет: %s)", order.PostingNumber, cabinetKey)
+			log.Printf("[INFO] Новый заказ: %s (кабинет: %s, склад: %s, ID: %d)",
+				order.PostingNumber, cabinetKey, warehouseDisplayName, order.WarehouseID)
 		}
 
 		orderState.LabelsStatus = orderState.CalculateLabelsStatus()
@@ -726,10 +744,24 @@ func processReadyForSplitOrders() error {
 			continue
 		}
 
-		stateMutex.Lock()
-		state, err := loadCabinetStateUnlocked(key)
+		// Получаем заказы для кабинета (без фильтра по складам)
+		orders, err := GetAwaitingPackagingOrders(cabinet, []int64{})
 		if err != nil {
-			stateMutex.Unlock()
+			log.Printf("[WARNING] Авто-разделение: ошибка загрузки заказов для кабинета %s: %v", key, err)
+			continue
+		}
+
+		// Обновляем состояние (сохраняем заказы в JSON)
+		if err := UpdateOrders(key, cabinet.Name, orders); err != nil {
+			log.Printf("[WARNING] Авто-разделение: ошибка сохранения для кабинета %s: %v", key, err)
+			continue
+		}
+
+		log.Printf("[INFO] Авто-разделение [%s]: загружено %d заказов", key, len(orders))
+
+		// Загружаем состояние из файла
+		state, err := LoadCabinetState(key)
+		if err != nil {
 			log.Printf("[WARNING] Авто-разделение: ошибка загрузки состояния для кабинета %s: %v", key, err)
 			continue
 		}
@@ -742,7 +774,7 @@ func processReadyForSplitOrders() error {
 				continue
 			}
 
-			log.Printf("[INFO] Авто-разделение [%s]: обработка заказа %s", key, order.PostingNumber)
+			log.Printf("[INFO] Авто-разделение [%s]: обработка заказа %s (склад: %s)", key, order.PostingNumber, order.WarehouseName)
 
 			needsMarking := false
 			for _, product := range order.Products {
@@ -753,14 +785,6 @@ func processReadyForSplitOrders() error {
 			}
 
 			if !needsMarking {
-				// Сохраняем состояние перед разделением
-				if err := saveCabinetStateUnlocked(state); err != nil {
-					stateMutex.Unlock()
-					log.Printf("[ERROR] Авто-разделение [%s]: ошибка сохранения состояния: %v", key, err)
-					return err
-				}
-				stateMutex.Unlock()
-
 				if err := autoSplitOrder(key, order); err != nil {
 					log.Printf("[ERROR] Авто-разделение [%s]: ошибка разделения заказа %s: %v", key, order.PostingNumber, err)
 					continue
@@ -775,7 +799,7 @@ func processReadyForSplitOrders() error {
 			}
 
 			// Перезагружаем состояние
-			freshState, _ := loadCabinetStateUnlocked(key)
+			freshState, _ := LoadCabinetState(key)
 			var freshOrder *models.OrderState
 			for j := range freshState.Orders {
 				if freshState.Orders[j].PostingNumber == order.PostingNumber {
@@ -797,14 +821,6 @@ func processReadyForSplitOrders() error {
 			}
 
 			if allMarkingCompleted {
-				// Сохраняем состояние перед разделением
-				if err := saveCabinetStateUnlocked(freshState); err != nil {
-					stateMutex.Unlock()
-					log.Printf("[ERROR] Авто-разделение [%s]: ошибка сохранения состояния: %v", key, err)
-					return err
-				}
-				stateMutex.Unlock()
-
 				if err := autoSplitOrder(key, freshOrder); err != nil {
 					log.Printf("[ERROR] Авто-разделение [%s]: ошибка разделения заказа %s: %v", key, freshOrder.PostingNumber, err)
 					continue
@@ -812,7 +828,6 @@ func processReadyForSplitOrders() error {
 				processed++
 			} else {
 				log.Printf("[INFO] Авто-разделение [%s]: заказ %s ожидает маркировки", key, order.PostingNumber)
-				stateMutex.Unlock()
 			}
 		}
 
@@ -820,7 +835,6 @@ func processReadyForSplitOrders() error {
 			log.Printf("[INFO] Авто-разделение [%s]: обработано %d заказов", key, processed)
 			totalProcessed += processed
 		}
-		stateMutex.Unlock()
 	}
 
 	if totalProcessed > 0 {
@@ -1015,9 +1029,9 @@ func processMarkingForOrder(cabinetKey string, order *models.OrderState) error {
 					shouldRemove = true
 					break
 				}
-				if !shouldRemove {
-					newLines = append(newLines, line)
-				}
+			}
+			if !shouldRemove {
+				newLines = append(newLines, line)
 			}
 		}
 

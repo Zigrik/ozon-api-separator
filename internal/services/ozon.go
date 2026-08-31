@@ -56,33 +56,48 @@ func MakeOzonRequest(cab *models.CabinetConfig, method, url string, body interfa
 }
 
 // GetAwaitingPackagingOrders - получает список заказов в статусе "ожидает упаковки"
-func GetAwaitingPackagingOrders(cab *models.CabinetConfig) ([]models.Posting, error) {
+// Использует v3 API с поддержкой фильтрации по складам через массив
+func GetAwaitingPackagingOrders(cab *models.CabinetConfig, warehouseIDs []int64) ([]models.Posting, error) {
 	url := "https://api-seller.ozon.ru/v3/posting/fbs/unfulfilled/list"
 
 	now := time.Now()
 	cutoffFrom := now.AddDate(0, 0, -30)
 	cutoffTo := now.AddDate(0, 0, 7)
 
-	filter := models.PostingsFilter{
+	filter := models.PostingsFilterV3{
 		Limit:  1000,
 		Offset: 0,
 	}
 	filter.Filter.Status = "awaiting_packaging"
 	filter.Filter.CutoffFrom = &cutoffFrom
 	filter.Filter.CutoffTo = &cutoffTo
+	filter.Filter.WarehouseID = warehouseIDs
+
+	log.Printf("[DEBUG] Запрос заказов с фильтром по складам: %v", warehouseIDs)
 
 	respBody, err := MakeOzonRequest(cab, "POST", url, filter)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка запроса к Ozon API: %w", err)
 	}
 
-	var response models.PostingsListResponse
+	var response models.PostingsListResponseV3
 	if err := json.Unmarshal(respBody, &response); err != nil {
 		return nil, fmt.Errorf("ошибка парсинга ответа Ozon: %w", err)
 	}
 
+	// Обрабатываем требования для всех заказов И маппим склад
 	for i := range response.Result.Postings {
 		posting := &response.Result.Postings[i]
+
+		// Маппим склад из delivery_method в поля posting
+		if posting.DeliveryMethod != nil {
+			posting.WarehouseID = posting.DeliveryMethod.WarehouseID
+			posting.WarehouseName = posting.DeliveryMethod.Warehouse
+			log.Printf("[DEBUG] Заказ %s: warehouse_id=%d, warehouse_name=%s",
+				posting.PostingNumber, posting.WarehouseID, posting.WarehouseName)
+		} else {
+			log.Printf("[DEBUG] Заказ %s: delivery_method отсутствует", posting.PostingNumber)
+		}
 
 		if posting.Requirements != nil {
 			markMap := make(map[int64]bool)
@@ -112,6 +127,7 @@ func GetAwaitingPackagingOrders(cab *models.CabinetConfig) ([]models.Posting, er
 		}
 	}
 
+	log.Printf("[INFO] Всего получено %d заказов через v3 API", len(response.Result.Postings))
 	return response.Result.Postings, nil
 }
 
@@ -246,7 +262,6 @@ func GetLabelByTaskIDWithRetry(cab *models.CabinetConfig, taskID int64, maxRetri
 
 // SaveLabelToFile - сохраняет PDF этикетки в файл
 func SaveLabelToFile(cab *models.CabinetConfig, postingNumber string, pdfData []byte) (string, error) {
-	// Используем LabelsPath из конфига кабинета
 	labelsPath := cab.LabelsPath
 	if labelsPath == "" {
 		labelsPath = config.GetLabelsPathForCabinet(cab.Key)

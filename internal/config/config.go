@@ -158,6 +158,52 @@ func GetDataPathForCabinet(cabinetKey string) string {
 	return GetLabelsPathForCabinet(cabinetKey)
 }
 
+// GetWarehouseUN - возвращает ID склада "Ун." из .env
+func GetWarehouseUN() int64 {
+	val := os.Getenv("WAREHOUSE_UN")
+	if val == "" {
+		return 0
+	}
+	id, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		log.Printf("[WARNING] Ошибка парсинга WAREHOUSE_UN=%s: %v", val, err)
+		return 0
+	}
+	return id
+}
+
+// GetWarehouseREV - возвращает ID склада "Рев." из .env
+func GetWarehouseREV() int64 {
+	val := os.Getenv("WAREHOUSE_REV")
+	if val == "" {
+		return 0
+	}
+	id, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		log.Printf("[WARNING] Ошибка парсинга WAREHOUSE_REV=%s: %v", val, err)
+		return 0
+	}
+	return id
+}
+
+// GetWarehouseUNName - возвращает название склада "Ун." из .env
+func GetWarehouseUNName() string {
+	name := os.Getenv("WAREHOUSE_UN_NAME")
+	if name == "" {
+		return "Ун."
+	}
+	return name
+}
+
+// GetWarehouseREVName - возвращает название склада "Рев." из .env
+func GetWarehouseREVName() string {
+	name := os.Getenv("WAREHOUSE_REV_NAME")
+	if name == "" {
+		return "Рев."
+	}
+	return name
+}
+
 func GetActiveConfig() *models.CabinetConfig {
 	return AppConfig.Cabinets[AppConfig.ActiveCabinet]
 }

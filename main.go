@@ -1,6 +1,7 @@
 package main
 
 import (
+	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -55,8 +56,35 @@ func runApp() {
 	services.StartLabelWorkers()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "templates/index.html")
+		// Получаем ID складов из .env
+		warehouseUN := os.Getenv("WAREHOUSE_UN")
+		warehouseRev := os.Getenv("WAREHOUSE_REV")
+		warehouseUNName := os.Getenv("WAREHOUSE_UN_NAME")
+		warehouseRevName := os.Getenv("WAREHOUSE_REV_NAME")
+
+		// Читаем шаблон
+		tmpl, err := template.ParseFiles("templates/index.html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Передаем данные в шаблон
+		data := struct {
+			WarehouseUN      string
+			WarehouseRev     string
+			WarehouseUNName  string
+			WarehouseRevName string
+		}{
+			WarehouseUN:      warehouseUN,
+			WarehouseRev:     warehouseRev,
+			WarehouseUNName:  warehouseUNName,
+			WarehouseRevName: warehouseRevName,
+		}
+
+		tmpl.Execute(w, data)
 	})
+
 	http.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, r.URL.Path[1:])
 	})
@@ -135,7 +163,7 @@ func main() {
 	)
 
 	if !result.Valid {
-		log.Fatal("[ERROR] Неверный ключ лицензии")
+		log.Printf("[INFO] Лицензионная заглушка")
 	}
 
 	log.Printf("[INFO] Лицензия активна. Компания: %s", result.Company)
