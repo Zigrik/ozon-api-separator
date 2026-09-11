@@ -55,39 +55,69 @@ func MakeOzonRequest(cab *models.CabinetConfig, method, url string, body interfa
 	return respBody, nil
 }
 
-// GetAwaitingPackagingOrders - получает список заказов в статусе "ожидает упаковки"
-// Использует v3 API с поддержкой фильтрации по складам через массив
+// GetAwaitingPackagingOrders - получает список заказов через v4 API
+// Поддерживает фильтрацию по складам, пагинация через cursor
 func GetAwaitingPackagingOrders(cab *models.CabinetConfig, warehouseIDs []int64) ([]models.Posting, error) {
-	url := "https://api-seller.ozon.ru/v3/posting/fbs/unfulfilled/list"
+	url := "https://api-seller.ozon.ru/v4/posting/fbs/unfulfilled/list"
 
 	now := time.Now()
 	cutoffFrom := now.AddDate(0, 0, -30)
 	cutoffTo := now.AddDate(0, 0, 7)
 
-	filter := models.PostingsFilterV3{
-		Limit:  1000,
-		Offset: 0,
+	var allOrders []models.Posting
+	var cursor string
+	pageCount := 0
+	maxPages := 50 // защита от бесконечного цикла
+
+	for {
+		filter := models.PostingsFilterV4{
+			SortDir: "asc",
+			Limit:   100, // v4 API максимум 100
+			Cursor:  cursor,
+		}
+		filter.Filter.Statuses = []string{"awaiting_packaging"}
+		filter.Filter.CutoffFrom = &cutoffFrom
+		filter.Filter.CutoffTo = &cutoffTo
+		if len(warehouseIDs) > 0 {
+			filter.Filter.WarehouseIDs = warehouseIDs
+		}
+		filter.With.Barcodes = true
+		filter.With.AnalyticsData = true
+		filter.With.FinancialData = true
+		filter.With.LegalInfo = true
+
+		log.Printf("[DEBUG] Запрос заказов (v4): фильтр по складам=%v, cursor=%s, страница=%d", warehouseIDs, cursor, pageCount+1)
+
+		respBody, err := MakeOzonRequest(cab, "POST", url, filter)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка запроса к Ozon API: %w", err)
+		}
+
+		var response models.PostingsListResponseV4
+		if err := json.Unmarshal(respBody, &response); err != nil {
+			return nil, fmt.Errorf("ошибка парсинга ответа Ozon: %w", err)
+		}
+
+		allOrders = append(allOrders, response.Postings...)
+		pageCount++
+
+		log.Printf("[DEBUG] Получено %d заказов на странице %d (всего: %d, has_next=%v)",
+			len(response.Postings), pageCount, len(allOrders), response.HasNext)
+
+		if !response.HasNext || response.Cursor == "" {
+			break
+		}
+		if pageCount >= maxPages {
+			log.Printf("[WARNING] Достигнут лимит страниц (%d), прекращаем загрузку", maxPages)
+			break
+		}
+
+		cursor = response.Cursor
 	}
-	filter.Filter.Status = "awaiting_packaging"
-	filter.Filter.CutoffFrom = &cutoffFrom
-	filter.Filter.CutoffTo = &cutoffTo
-	filter.Filter.WarehouseID = warehouseIDs
 
-	log.Printf("[DEBUG] Запрос заказов с фильтром по складам: %v", warehouseIDs)
-
-	respBody, err := MakeOzonRequest(cab, "POST", url, filter)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка запроса к Ozon API: %w", err)
-	}
-
-	var response models.PostingsListResponseV3
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, fmt.Errorf("ошибка парсинга ответа Ozon: %w", err)
-	}
-
-	// Обрабатываем требования для всех заказов И маппим склад
-	for i := range response.Result.Postings {
-		posting := &response.Result.Postings[i]
+	// Обрабатываем требования и маппим склад
+	for i := range allOrders {
+		posting := &allOrders[i]
 
 		// Маппим склад из delivery_method в поля posting
 		if posting.DeliveryMethod != nil {
@@ -127,8 +157,8 @@ func GetAwaitingPackagingOrders(cab *models.CabinetConfig, warehouseIDs []int64)
 		}
 	}
 
-	log.Printf("[INFO] Всего получено %d заказов через v3 API", len(response.Result.Postings))
-	return response.Result.Postings, nil
+	log.Printf("[INFO] Всего получено %d заказов через v4 API (страниц: %d)", len(allOrders), pageCount)
+	return allOrders, nil
 }
 
 // ShipOrder - разделяет заказ на несколько отправлений

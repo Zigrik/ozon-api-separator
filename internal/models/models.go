@@ -36,7 +36,7 @@ type Posting struct {
 	Requirements    *Requirements `json:"requirements,omitempty"`
 	IsFolderReady   bool          `json:"is_folder_ready"`
 	IsReadyForSplit bool          `json:"is_ready_for_split,omitempty"`
-	// v3 API — склад внутри delivery_method
+	// v4 API — склад внутри delivery_method
 	DeliveryMethod  *DeliveryMethod `json:"delivery_method,omitempty"`
 	IntegrationType string          `json:"integration_type_flow,omitempty"`
 	// Заполняем из delivery_method для удобства
@@ -86,37 +86,42 @@ func (p *Product) GetPrice() float64 {
 	}
 }
 
-// PostingsFilterV3 - структура фильтра для v3 API
-type PostingsFilterV3 struct {
-	Dir    string `json:"dir,omitempty"`
-	Filter struct {
-		Status           string     `json:"status,omitempty"`
-		CutoffFrom       *time.Time `json:"cutoff_from,omitempty"`
-		CutoffTo         *time.Time `json:"cutoff_to,omitempty"`
-		DeliveryMethodID []int64    `json:"delivery_method_id,omitempty"`
-		IsQuantum        bool       `json:"is_quantum,omitempty"`
-		ProviderID       []int64    `json:"provider_id,omitempty"`
-		WarehouseID      []int64    `json:"warehouse_id,omitempty"`
+// ============ ФИЛЬТР И ОТВЕТ ДЛЯ v4 API ============
+
+// TimeRange - диапазон дат для v4 API
+type TimeRange struct {
+	From *time.Time `json:"from,omitempty"`
+	To   *time.Time `json:"to,omitempty"`
+}
+
+// PostingsFilterV4 - структура фильтра для v4 API
+type PostingsFilterV4 struct {
+	SortDir string `json:"sort_dir,omitempty"`
+	Limit   int    `json:"limit"`
+	Filter  struct {
+		CutoffFrom           *time.Time `json:"cutoff_from,omitempty"`
+		CutoffTo             *time.Time `json:"cutoff_to,omitempty"`
+		DeliveryMethodIDs    []int64    `json:"delivery_method_ids,omitempty"`
+		Statuses             []string   `json:"statuses,omitempty"`
+		WarehouseIDs         []int64    `json:"warehouse_ids,omitempty"`
+		ProviderIDs          []int64    `json:"provider_ids,omitempty"`
+		LastChangeStatusDate *TimeRange `json:"last_change_status_date,omitempty"`
 	} `json:"filter"`
-	Limit  int `json:"limit"`
-	Offset int `json:"offset"`
+	Cursor string `json:"cursor,omitempty"`
 	With   struct {
-		AnalyticsData bool `json:"analytics_data,omitempty"`
 		Barcodes      bool `json:"barcodes,omitempty"`
+		AnalyticsData bool `json:"analytics_data,omitempty"`
 		FinancialData bool `json:"financial_data,omitempty"`
 		LegalInfo     bool `json:"legal_info,omitempty"`
-		Translit      bool `json:"translit,omitempty"`
 	} `json:"with,omitempty"`
 }
 
-// PostingsListResponseV3 - структура ответа для v3 API
-type PostingsListResponseV3 struct {
-	Result struct {
-		Postings []Posting `json:"postings"`
-	} `json:"result"`
-	Count   int    `json:"count"`
-	HasNext bool   `json:"has_next"`
-	Cursor  string `json:"cursor,omitempty"`
+// PostingsListResponseV4 - структура ответа для v4 API
+type PostingsListResponseV4 struct {
+	HasNext  bool      `json:"has_next"`
+	Cursor   string    `json:"cursor,omitempty"`
+	Postings []Posting `json:"postings"`
+	Count    int       `json:"count"`
 }
 
 // ============ МОДЕЛИ ДЛЯ РАЗДЕЛЕНИЯ ЗАКАЗОВ ============
