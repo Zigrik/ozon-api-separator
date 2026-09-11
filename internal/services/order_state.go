@@ -1128,6 +1128,7 @@ func convertProducts(products []models.Product) []models.ProductState {
 			SKU:       p.SKU,
 			OfferID:   p.OfferID,
 			Quantity:  p.Quantity,
+			Price:     p.GetPriceFloat(), // ← сохраняем цену
 			Requirements: models.ProductRequirement{
 				IsMandatoryMarked: p.IsMandatoryMarked,
 				IsGtdRequired:     p.IsGtdRequired,

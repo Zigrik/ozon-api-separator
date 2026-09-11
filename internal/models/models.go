@@ -71,16 +71,41 @@ type Requirements struct {
 	ProductsRequiringMandatoryMark []int64 `json:"products_requiring_mandatory_mark,omitempty"`
 }
 
+// GetPrice - возвращает цену как float64 (устаревший, оставлен для совместимости)
 func (p *Product) GetPrice() float64 {
+	return p.GetPriceFloat()
+}
+
+// GetPriceFloat - извлекает цену как float64 из любого формата (v3, v4)
+func (p *Product) GetPriceFloat() float64 {
 	switch v := p.Price.(type) {
 	case float64:
 		return v
+	case int:
+		return float64(v)
 	case string:
 		var price float64
 		cleanStr := strings.ReplaceAll(v, ",", "")
 		cleanStr = strings.ReplaceAll(cleanStr, " ", "")
 		fmt.Sscanf(cleanStr, "%f", &price)
 		return price
+	case map[string]interface{}:
+		// v4 API: {"amount": "1530", "currency": "RUB"}
+		if amount, ok := v["amount"]; ok {
+			switch a := amount.(type) {
+			case string:
+				var price float64
+				cleanStr := strings.ReplaceAll(a, ",", "")
+				cleanStr = strings.ReplaceAll(cleanStr, " ", "")
+				fmt.Sscanf(cleanStr, "%f", &price)
+				return price
+			case float64:
+				return a
+			case int:
+				return float64(a)
+			}
+		}
+		return 0
 	default:
 		return 0
 	}
@@ -198,6 +223,7 @@ type ProductState struct {
 	SKU          int64              `json:"sku"`
 	OfferID      string             `json:"offer_id"`
 	Quantity     int                `json:"quantity"`
+	Price        float64            `json:"price"` // ← добавляем цену
 	Requirements ProductRequirement `json:"requirements"`
 	Marking      MarkingState       `json:"marking"`
 	Country      CountryState       `json:"country"`

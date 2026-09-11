@@ -115,7 +115,7 @@ func GetAwaitingPackagingOrders(cab *models.CabinetConfig, warehouseIDs []int64)
 		cursor = response.Cursor
 	}
 
-	// Обрабатываем требования и маппим склад
+	// Обрабатываем требования, маппим склад и цену
 	for i := range allOrders {
 		posting := &allOrders[i]
 
@@ -154,6 +154,14 @@ func GetAwaitingPackagingOrders(cab *models.CabinetConfig, warehouseIDs []int64)
 				product.IsGtdRequired = gtdMap[pid] || gtdMap[product.SKU]
 				product.IsCountryRequired = cntMap[pid] || cntMap[product.SKU]
 			}
+		}
+
+		// Преобразуем price в число для удобства фронтенда
+		for j := range posting.Products {
+			product := &posting.Products[j]
+			price := product.GetPriceFloat()
+			product.Price = price
+			log.Printf("[DEBUG] Заказ %s, товар %s: цена = %.2f", posting.PostingNumber, product.OfferID, price)
 		}
 	}
 
